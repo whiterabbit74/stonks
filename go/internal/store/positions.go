@@ -791,6 +791,16 @@ func detachExitedLegTx(tx *sql.Tx, p *Position, broker, exitDate string) error {
 	return nil
 }
 
+// weightedPrice is the average price of two lots. A lot with shares and no
+// confirmed price makes the average unknown: NULL, not a guess (invariant J).
+func weightedPrice(q1 float64, p1 *float64, q2 float64, p2 *float64) *float64 {
+	if p1 == nil || p2 == nil {
+		return nil
+	}
+	v := (q1**p1 + q2**p2) / (q1 + q2)
+	return &v
+}
+
 // AttachEntry records an entry fill on the open position of that ticker,
 // creating the position when this broker is the first one in.
 //
@@ -808,6 +818,7 @@ func (d *DB) AttachEntry(f EntryFill) (*Position, error) {
 
 	p, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+
 		` FROM positions WHERE symbol=? AND status='open' ORDER BY entry_date DESC, id LIMIT 1`, symbol))
+	fresh := err == sql.ErrNoRows
 	switch {
 	case err == sql.ErrNoRows:
 		p = Position{
@@ -830,7 +841,25 @@ func (d *DB) AttachEntry(f EntryFill) (*Position, error) {
 		p.IsTest = false
 	}
 	leg := p.Leg(f.Broker)
-	if leg.EntryOrderID == f.OrderID && leg.Qty >= f.Qty {
+	// Each order is booked once, by what its tracker says the journal already
+	// holds of it — not by what the open row of the ticker happens to carry.
+	// Keyed off the open row, a replay arriving after that row was closed found
+	// nothing, and the old fill was written over the closed row or into the
+	// next entry (AUD-169).
+	newly, err := claimFillTx(tx, f.OrderID, f.Qty)
+	if err != nil {
+		return nil, err
+	}
+	sameOrder := leg.EntryOrderID == f.OrderID
+	if sameOrder && newly >= f.Qty-1e-9 {
+		// Nothing claimed for this order yet (booked before entries claimed,
+		// or no tracker at all): the leg carrying its id is what it booked.
+		newly = f.Qty - leg.Qty
+	}
+	if !(newly > 1e-9) {
+		if fresh {
+			return nil, tx.Commit() // booked into a row that is no longer open
+		}
 		return &p, tx.Commit() // already recorded
 	}
 	if leg.ExitOrderID != "" && !leg.Holds() && leg.EntryOrderID != f.OrderID {
@@ -844,15 +873,30 @@ func (d *DB) AttachEntry(f EntryFill) (*Position, error) {
 		}
 		leg = p.Leg(f.Broker)
 	}
-	if f.Qty > leg.Qty {
-		leg.Qty = f.Qty
+	// A second order into a leg that still holds is more shares, not a new
+	// count of the same ones: max(old, new) dropped the first buy and priced
+	// both at the second (AUD-180).
+	if !(leg.Qty > 1e-9) || sameOrder && leg.Qty <= f.Qty-newly+1e-9 {
+		// The leg is this order alone: its average fill is the leg's price.
+		if f.Price != nil {
+			leg.EntryPrice = f.Price
+		}
+	} else {
+		leg.EntryPrice = weightedPrice(leg.Qty, leg.EntryPrice, newly, f.Price)
 	}
+	leg.Qty += newly
 	leg.EntryOrderID = f.OrderID
-	if f.Price != nil {
-		leg.EntryPrice = f.Price
-	}
 	p.SetLeg(f.Broker, leg)
 	p.Quantity = p.ExecutedQty()
+	other := p.Robinhood
+	if normalizeBroker(f.Broker) == "robinhood" {
+		other = p.Webull
+	}
+	if !other.Executed() {
+		// The row is this broker's alone, so its entry price is this leg's:
+		// the P&L is taken from it.
+		p.EntryPrice = leg.EntryPrice
+	}
 
 	if err := insertMerged(tx, p); err != nil {
 		return nil, err

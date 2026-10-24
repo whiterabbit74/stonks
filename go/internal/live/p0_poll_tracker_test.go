@@ -25,7 +25,7 @@ func TestFinalizeDoesNotRejournalWhenStatusStampFails(t *testing.T) {
 	br.SetDetail(id, map[string]any{"client_order_id": id, "status": "FILLED", "avg_price": 8.2, "filled_qty": 1.0})
 	if _, err := db.SQL.Exec(`
             CREATE TRIGGER IF NOT EXISTS trackers_block_status
-            BEFORE UPDATE ON order_trackers
+            BEFORE UPDATE OF status ON order_trackers
             BEGIN
                 SELECT RAISE(ABORT, 'injected tracker stamp failure');
             END;
