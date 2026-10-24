@@ -1,6 +1,7 @@
 package robinhood
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -95,5 +96,38 @@ func TestRevokeWaitsForInFlightRefresh(t *testing.T) {
 	<-done
 	if row := db.GetRobinhoodOAuth(); row.AccessToken != "" || row.RefreshToken != "" {
 		t.Fatalf("tokens came back after disconnect: %+v", row)
+	}
+}
+
+// AUD-162: the MCP request had a context, but fetching its token did not, so a
+// slow token refresh ran past the broker read budget.
+func TestMCPTokenFetchHonoursContext(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "A1", "refresh_token": "R1", "expires_in": 86400 * 7})
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(release) })
+	TokenURL = srv.URL
+	soon := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
+	if err := db.SaveRobinhoodTokens("A0", "R0", "Bearer", "internal", soon); err != nil {
+		t.Fatal(err)
+	}
+	s := New(db)
+	s.HTTP = srv.Client()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if _, err := s.CallToolCtx(ctx, "get_accounts", nil); err == nil {
+		t.Fatal("call must fail once its context expires")
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("token fetch ignored the context: %v", took)
 	}
 }

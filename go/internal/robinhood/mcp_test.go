@@ -1,6 +1,7 @@
 package robinhood
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -38,7 +39,7 @@ func TestMCPInitializeSessionAndToolCall(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := &MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func() (string, error) { return "tok", nil }}
+	c := &MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func(context.Context) (string, error) { return "tok", nil }}
 	raw, err := c.CallTool("get_accounts", nil)
 	if err != nil {
 		t.Fatal(err)

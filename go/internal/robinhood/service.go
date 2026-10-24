@@ -37,7 +37,7 @@ var tokenMu sync.Mutex
 
 func New(db *store.DB) *Service {
 	s := &Service{DB: db, HTTP: &http.Client{Timeout: 20 * time.Second}}
-	s.MCP = &MCP{HTTP: s.HTTP, Endpoint: MCPEndpoint, Token: s.AccessToken}
+	s.MCP = &MCP{HTTP: s.HTTP, Endpoint: MCPEndpoint, Token: s.AccessTokenCtx}
 	return s
 }
 
@@ -155,6 +155,28 @@ func (s *Service) AccessToken() (string, error) {
 		row = s.DB.GetRobinhoodOAuth()
 	}
 	return row.AccessToken, nil
+}
+
+// AccessTokenCtx — AccessToken, который не ждёт дольше ctx. Ожидание замка
+// и сетевой refresh раньше шли мимо бюджета брокерского чтения T-1 (AUD-162).
+// Сам обмен не отменяется: прерванный refresh мог бы потерять уже
+// повёрнутую пару, поэтому он доживает в фоне и сохраняет ответ.
+func (s *Service) AccessTokenCtx(ctx context.Context) (string, error) {
+	type result struct {
+		tok string
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		tok, err := s.AccessToken()
+		ch <- result{tok, err}
+	}()
+	select {
+	case r := <-ch:
+		return r.tok, r.err
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 }
 
 func (s *Service) Refresh() error {
@@ -301,7 +323,7 @@ func (s *Service) CallTool(name string, args map[string]any) (json.RawMessage, e
 // minute. See P1-1 in AUTOTRADE_ROADMAP.md.
 func (s *Service) CallToolCtx(ctx context.Context, name string, args map[string]any) (json.RawMessage, error) {
 	if s.MCP == nil {
-		s.MCP = &MCP{HTTP: s.http(), Endpoint: MCPEndpoint, Token: s.AccessToken}
+		s.MCP = &MCP{HTTP: s.http(), Endpoint: MCPEndpoint, Token: s.AccessTokenCtx}
 	}
 	raw, err := s.MCP.CallToolCtx(ctx, name, args)
 	if err != nil && strings.Contains(err.Error(), "unauthorized") {

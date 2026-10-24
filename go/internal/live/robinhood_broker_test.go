@@ -60,7 +60,7 @@ func TestNewRobinhoodBrokerUsesServiceCallTool(t *testing.T) {
 	srv := mcpAccountsServer(t, &tools)
 	t.Cleanup(srv.Close)
 	svc := &robinhood.Service{HTTP: srv.Client()}
-	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func() (string, error) { return "tok", nil }}
+	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func(context.Context) (string, error) { return "tok", nil }}
 	b := NewRobinhoodBroker(svc)
 	if b.Call != nil {
 		t.Fatal("production constructor must leave Call nil")
@@ -364,7 +364,7 @@ func TestRobinhoodPlaceUnauthorizedIsAmbiguousWithoutRetry(t *testing.T) {
 
 	svc := robinhood.New(db)
 	svc.HTTP = mcp.Client()
-	svc.MCP = &robinhood.MCP{HTTP: mcp.Client(), Endpoint: mcp.URL, Token: svc.AccessToken}
+	svc.MCP = &robinhood.MCP{HTTP: mcp.Client(), Endpoint: mcp.URL, Token: svc.AccessTokenCtx}
 	b := NewRobinhoodBroker(svc)
 	res, err := b.PlaceMarket(context.Background(), "AAPL", "BUY", 1, PlaceMarketCfg{ClientOrderID: "11111111-1111-1111-1111-111111111111"})
 	if err != nil {
@@ -401,7 +401,7 @@ func TestRobinhoodBrokerUsesStoredAccountNumber(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := &robinhood.Service{HTTP: srv.Client(), DB: db}
-	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func() (string, error) { return "tok", nil }}
+	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func(context.Context) (string, error) { return "tok", nil }}
 	b := NewRobinhoodBroker(svc)
 	if _, err := b.PlaceMarket(context.Background(), "AAPL", "BUY", 1, PlaceMarketCfg{}); err != nil {
 		t.Fatal(err)
@@ -670,7 +670,7 @@ func TestReviewOrderIsCalledWithoutRefID(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	svc := &robinhood.Service{HTTP: srv.Client()}
-	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func() (string, error) { return "tok", nil }}
+	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func(context.Context) (string, error) { return "tok", nil }}
 	if _, err := NewRobinhoodBroker(svc).PlaceMarket(context.Background(), "AAL", "BUY", 1, PlaceMarketCfg{}); err != nil {
 		t.Fatal(err)
 	}
@@ -735,7 +735,7 @@ func TestOrderDetailFindsOrderByBrokerOrderID(t *testing.T) {
 	}
 	t.Cleanup(func() { db.Close() })
 	svc := &robinhood.Service{DB: db, HTTP: srv.Client()}
-	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func() (string, error) { return "tok", nil }}
+	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func(context.Context) (string, error) { return "tok", nil }}
 	b := NewRobinhoodBroker(svc)
 
 	res, err := b.PlaceMarket(context.Background(), "AAL", "BUY", 1, PlaceMarketCfg{})
@@ -813,7 +813,7 @@ func TestOrderDetailAfterEnvelopedPlaceResponse(t *testing.T) {
 	}
 	t.Cleanup(func() { db.Close() })
 	svc := &robinhood.Service{DB: db, HTTP: srv.Client()}
-	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func() (string, error) { return "tok", nil }}
+	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func(context.Context) (string, error) { return "tok", nil }}
 	b := NewRobinhoodBroker(svc)
 
 	res, err := b.PlaceMarket(context.Background(), "AAL", "BUY", 1, PlaceMarketCfg{})

@@ -24,7 +24,7 @@ func redactSecrets(s string) string {
 type MCP struct {
 	HTTP     *http.Client
 	Endpoint string
-	Token    func() (string, error)
+	Token    func(context.Context) (string, error)
 
 	mu      sync.Mutex
 	initMu  sync.Mutex
@@ -135,7 +135,7 @@ func (c *MCP) post(ctx context.Context, payload map[string]any, notification boo
 	}
 	tok := ""
 	if c.Token != nil {
-		tok, err = c.Token()
+		tok, err = c.Token(ctx)
 		if err != nil {
 			return nil, err
 		}
