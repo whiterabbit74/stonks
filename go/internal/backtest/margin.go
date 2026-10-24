@@ -107,6 +107,19 @@ func SimulateMargin(p MarginParams) MarginResult {
 			}
 		}
 	}
+	// accountValue — капитал счёта: свободные деньги плюс позиция за вычетом
+	// долга. Долг гасится всем счётом, а не только позицией, поэтому
+	// отрицательная стоимость позиции не обрезается отдельно (AUD-145).
+	accountValue := func(price float64) float64 {
+		return math.Max(0, cash+pos.quantity*price-pos.borrowed)
+	}
+	// settle закрывает позицию по price и возвращает PnL сделки.
+	settle := func(price float64) float64 {
+		after := accountValue(price)
+		pnl := after - cash - pos.marginUsed
+		cash = after
+		return pnl
+	}
 	equity := runDailyEngine(dates, initial, func(day dailyDay) float64 {
 		bar := bars[day.Index]
 		date := bar.Date
@@ -129,17 +142,15 @@ func SimulateMargin(p MarginParams) MarginResult {
 			if hit {
 				trigger := maintPrice
 				proceeds := pos.quantity * math.Max(0, trigger)
-				posEq := math.Max(0, proceeds-pos.borrowed)
 				ratio := 0.0
 				if proceeds > 0 {
-					ratio = math.Max(0, math.Min(1, posEq/proceeds))
+					ratio = math.Max(0, math.Min(1, accountValue(math.Max(0, trigger))/proceeds))
 				}
 				drop := 0.0
 				if pos.entryPrice > 0 {
 					drop = ((pos.entryPrice - math.Max(0, trigger)) / pos.entryPrice) * 100
 				}
-				cash += posEq
-				pnl := posEq - pos.marginUsed
+				pnl := settle(math.Max(0, trigger))
 				pnlPct := 0.0
 				if pos.marginUsed > 0 {
 					pnlPct = (pnl / pos.marginUsed) * 100
@@ -174,11 +185,7 @@ func SimulateMargin(p MarginParams) MarginResult {
 				events = append(events, ev)
 				pos = nil
 			} else if date == pos.plannedExitDate {
-				planned := pos.template.ExitPrice
-				proceeds := pos.quantity * planned
-				posEq := math.Max(0, proceeds-pos.borrowed)
-				cash += posEq
-				pnl := posEq - pos.marginUsed
+				pnl := settle(pos.template.ExitPrice)
 				pnlPct := 0.0
 				if pos.marginUsed > 0 {
 					pnlPct = (pnl / pos.marginUsed) * 100
@@ -202,12 +209,10 @@ func SimulateMargin(p MarginParams) MarginResult {
 				// A trade entering on the day the previous one exited
 				// (same-day re-entry) is opened now, not skipped (AUD-143).
 				if openOn(date); pos != nil {
-					totalValue = cash + math.Max(0, pos.quantity*bar.Close-pos.borrowed)
+					totalValue = accountValue(bar.Close)
 				}
 			} else {
-				notional := pos.quantity * bar.Close
-				posEq := math.Max(0, notional-pos.borrowed)
-				totalValue = cash + posEq
+				totalValue = accountValue(bar.Close)
 			}
 		}
 		return totalValue
@@ -215,10 +220,7 @@ func SimulateMargin(p MarginParams) MarginResult {
 	if pos != nil && len(bars) > 0 {
 		date := bars[len(bars)-1].Date
 		exitPx := bars[len(bars)-1].Close
-		proceeds := pos.quantity * exitPx
-		posEq := math.Max(0, proceeds-pos.borrowed)
-		cash += posEq
-		pnl := posEq - pos.marginUsed
+		pnl := settle(exitPx)
 		pnlPct := 0.0
 		if pos.marginUsed > 0 {
 			pnlPct = (pnl / pos.marginUsed) * 100
