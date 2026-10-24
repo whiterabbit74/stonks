@@ -110,3 +110,36 @@ func TestShortSessionStaysShortAfterRenewals(t *testing.T) {
 		t.Fatalf("renewed short session became %v", got)
 	}
 }
+
+// AUD-179: request A read a session due for renewal, request B logged out,
+// then A renewed it through INSERT OR REPLACE — the deleted token was valid
+// again and A's answer set the cookie anew.
+func TestRenewalAfterLogoutDoesNotRestoreSession(t *testing.T) {
+	s := testServer(t, "pw")
+	created := time.Now().Add(-time.Hour)
+	exp := created.Add(sessionShortTTL)
+	if err := s.DB.SessionSet("tok-1", created.UnixMilli(), exp.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.SessionDelete("tok-1"); err != nil { // B's logout
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	s.touchSession(w, httptest.NewRequest("GET", "/api/settings", nil), "tok-1", created.UnixMilli(), exp.UnixMilli())
+	if _, _, err := s.DB.SessionGet("tok-1"); err == nil {
+		t.Fatal("renewal brought the logged-out session back")
+	}
+	if c := w.Result().Cookies(); len(c) != 0 {
+		t.Fatalf("renewal set the cookie again: %+v", c)
+	}
+
+	// A live session is still renewed.
+	if err := s.DB.SessionSet("tok-2", created.UnixMilli(), exp.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	w = httptest.NewRecorder()
+	s.touchSession(w, httptest.NewRequest("GET", "/api/settings", nil), "tok-2", created.UnixMilli(), exp.UnixMilli())
+	if _, got, err := s.DB.SessionGet("tok-2"); err != nil || got <= exp.UnixMilli() || len(w.Result().Cookies()) != 1 {
+		t.Fatalf("live session not renewed: exp %d err %v cookies %v", got, err, w.Result().Cookies())
+	}
+}

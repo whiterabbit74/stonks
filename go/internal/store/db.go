@@ -766,6 +766,18 @@ func (d *DB) SessionSet(token string, created, expires int64) error {
 	return err
 }
 
+// SessionExtend moves the dates of an existing session and reports whether it
+// still existed. Renewal through SessionSet's INSERT OR REPLACE brought back a
+// session a concurrent logout had just deleted (AUD-179).
+func (d *DB) SessionExtend(token string, created, expires int64) (bool, error) {
+	res, err := d.SQL.Exec(`UPDATE sessions SET created_at = ?, expires_at = ? WHERE token = ?`, created, expires, token)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
 func (d *DB) SessionDelete(token string) error {
 	_, err := d.SQL.Exec(`DELETE FROM sessions WHERE token = ?`, token)
 	return err
