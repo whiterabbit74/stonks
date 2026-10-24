@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -57,6 +58,9 @@ type Server struct {
 	testAuthToken string
 	lastPurge     time.Time
 	purgeMu       sync.Mutex
+	// sessionsRevoked: обязательный отзыв сессий после смены пароля прошёл.
+	// Пока нет, ни одна сессия не принимается (AUD-149).
+	sessionsRevoked atomic.Bool
 }
 
 func New(db *store.DB, webDir string) *Server {
@@ -295,6 +299,14 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 			next(w, r)
 			return
 		}
+		// Отзыв при старте мог не пройти (база занята): тогда старая cookie
+		// после смены пароля жила до следующего рестарта (AUD-149).
+		if !s.sessionsRevoked.Load() {
+			if s.revokeSessionsOnCredentialChange(); !s.sessionsRevoked.Load() {
+				writeJSON(w, 503, map[string]any{"error": "Хранилище сессий недоступно"})
+				return
+			}
+		}
 		s.purgeExpiredSessions()
 		token := cookieToken(r)
 		if token == "" {
@@ -327,12 +339,15 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 // this a password rotation after a leak leaves the old cookie fully valid.
 func (s *Server) revokeSessionsOnCredentialChange() {
 	if s.DB == nil || s.adminPass == "" {
+		s.sessionsRevoked.Store(true)
 		return
 	}
 	sum := sha256.Sum256([]byte(s.adminUser + "\x00" + s.adminPass))
 	if err := s.DB.SessionsRevokeOnCredentialChange(hex.EncodeToString(sum[:])); err != nil {
 		log.Printf("session revoke on credential change: %v", err)
+		return
 	}
+	s.sessionsRevoked.Store(true)
 }
 
 func (s *Server) purgeExpiredSessions() {
