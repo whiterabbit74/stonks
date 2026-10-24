@@ -487,7 +487,10 @@ func (s *Server) touchSession(w http.ResponseWriter, r *http.Request, token stri
 	if time.UnixMilli(exp).Sub(now) > ttl-sessionTouchEvery {
 		return
 	}
-	if err := s.DB.SessionSet(token, created, now.Add(ttl).UnixMilli()); err != nil {
+	// created сдвигается вместе со сроком: тип сессии читается из разницы
+	// expires-created, и с исходным created короткая сессия через неделю
+	// активности становилась 30-дневной (AUD-166).
+	if err := s.DB.SessionSet(token, now.UnixMilli(), now.Add(ttl).UnixMilli()); err != nil {
 		return
 	}
 	s.setAuthCookie(w, r, token, ttl)

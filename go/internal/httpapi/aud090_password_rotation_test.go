@@ -4,6 +4,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // AUD-090: смена ADMIN_PASSWORD не отзывала выданные сессии — старая cookie
@@ -78,5 +79,34 @@ func TestFailedRevokeKeepsOldSessionsOut(t *testing.T) {
 	}
 	if code := get(); code != 401 {
 		t.Fatalf("after the retried revoke the old session must be gone, got %d", code)
+	}
+}
+
+// AUD-166: renewing a short session kept its original created_at, and after a
+// week of activity expires-created read as a "remember me" session.
+func TestShortSessionStaysShortAfterRenewals(t *testing.T) {
+	s := testServer(t, "pw")
+	r := httptest.NewRequest("POST", "/api/login", strings.NewReader(`{"username":"admin@example.com","password":"pw"}`))
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	cookie := w.Result().Cookies()[0]
+	// Almost a week of daily use: still short now, about to be renewed.
+	now := time.Now()
+	if err := s.DB.SessionSet(cookie.Value, now.Add(-163*time.Hour).UnixMilli(), now.Add(time.Hour).UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	r = httptest.NewRequest("GET", "/api/settings", nil)
+	r.AddCookie(cookie)
+	w = httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("settings %d", w.Code)
+	}
+	created, exp, err := s.DB.SessionGet(cookie.Value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sessionTTL(created, exp); got != sessionShortTTL {
+		t.Fatalf("renewed short session became %v", got)
 	}
 }
