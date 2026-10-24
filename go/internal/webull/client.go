@@ -530,18 +530,31 @@ func (c *Client) AccountPositionsCtx(ctx context.Context, accountID string) (*Re
 }
 
 func (c *Client) Instruments(symbol string) (*Response, error) {
-	return c.Request(http.MethodGet, "/instrument/list", map[string]string{
+	return c.InstrumentsCtx(context.Background(), symbol)
+}
+
+// InstrumentsCtx is Instruments bounded by the caller's deadline.
+func (c *Client) InstrumentsCtx(ctx context.Context, symbol string) (*Response, error) {
+	return c.RequestCtx(ctx, http.MethodGet, "/instrument/list", map[string]string{
 		"symbols":  symbol,
 		"category": "US_STOCK",
 	}, nil, true, nil)
 }
 
 func (c *Client) ResolveInstrumentID(symbol string) (string, error) {
+	return c.ResolveInstrumentIDCtx(context.Background(), symbol)
+}
+
+// ResolveInstrumentIDCtx is ResolveInstrumentID bounded by the caller's
+// deadline. The order path resolves the id right before sending: without the
+// order's context an uncached lookup ran its own 15 s past the session close
+// (AUD-178).
+func (c *Client) ResolveInstrumentIDCtx(ctx context.Context, symbol string) (string, error) {
 	want := strings.ToUpper(strings.TrimSpace(symbol))
 	if id := c.cachedInstrumentID(want); id != "" {
 		return id, nil
 	}
-	resp, err := c.Instruments(symbol)
+	resp, err := c.InstrumentsCtx(ctx, symbol)
 	if err != nil {
 		return "", err
 	}

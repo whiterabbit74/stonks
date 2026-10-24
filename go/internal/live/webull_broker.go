@@ -58,7 +58,7 @@ func (b *LiveBroker) PlaceMarket(ctx context.Context, symbol, side string, qty f
 	if qty <= 0 {
 		return OrderResult{Error: "quantity must be positive"}, fmt.Errorf("quantity must be positive")
 	}
-	inst, err := c.ResolveInstrumentID(symbol)
+	inst, err := c.ResolveInstrumentIDCtx(ctx, symbol)
 	if err != nil {
 		return OrderResult{Error: err.Error()}, err
 	}
