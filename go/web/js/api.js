@@ -17,6 +17,7 @@ const API = {
       else signal.addEventListener('abort', () => ctrl.abort(), { once: true });
     }
     let r;
+    let text;
     try {
       r = await fetch(path, {
         credentials: 'include',
@@ -24,6 +25,8 @@ const API = {
         signal: ctrl.signal,
         ...rest,
       });
+      // Тело читается под тем же таймером: fetch завершается на заголовках (AUD-165).
+      text = await r.text();
     } catch (netErr) {
       const aborted = netErr && (netErr.name === 'AbortError' || netErr.name === 'TimeoutError');
       const err = new Error(aborted ? 'Превышено время ожидания' : ((netErr && netErr.message) || 'Сеть недоступна'));
@@ -33,7 +36,6 @@ const API = {
     } finally {
       if (timer) clearTimeout(timer);
     }
-    const text = await r.text();
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
     if (r.status === 401 && !skipAuth && data && data.code === 'session_expired') {
