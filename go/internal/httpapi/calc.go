@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/http"
+	"strings"
 
 	"mktorder.com/go/internal/backtest"
 	"mktorder.com/go/internal/ibs"
@@ -458,6 +459,10 @@ func (s *Server) tickersOrOne(w http.ResponseWriter, req calcReq) ([]backtest.Ti
 			writeJSON(w, 400, map[string]any{"error": "splits в многотикерном запросе требуют поля ticker"})
 			return nil, false
 		}
+		// Тикер без данных ни в запросе, ни в базе — отказ с его именем, а не
+		// тихий расчёт по остальным: выбор лучшего из набора — другой расчёт
+		// на другом наборе (AUD-155).
+		var missing []string
 		for _, t := range req.Tickers {
 			bars := decodeBars(t.Data)
 			if len(bars) == 0 {
@@ -469,6 +474,7 @@ func (s *Server) tickersOrOne(w http.ResponseWriter, req calcReq) ([]backtest.Ti
 				bars = stored
 			}
 			if len(bars) == 0 {
+				missing = append(missing, t.Ticker)
 				continue
 			}
 			explicit := req.Splits
@@ -480,6 +486,10 @@ func (s *Server) tickersOrOne(w http.ResponseWriter, req calcReq) ([]backtest.Ti
 				return nil, false
 			}
 			out = append(out, backtest.TickerIndexed{Ticker: t.Ticker, Data: bars, IBSValues: indicators.IBS(bars), Splits: events})
+		}
+		if len(missing) > 0 {
+			writeJSON(w, 400, map[string]any{"error": "Нет данных: " + strings.Join(missing, ", "), "missing": missing})
+			return nil, false
 		}
 		return out, true
 	}
