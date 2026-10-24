@@ -397,6 +397,37 @@ func (d *DB) ListPendingTrackers() ([]map[string]any, error) {
 	return out, nil
 }
 
+// NoteTrackerFill keeps the executed quantity a broker has confirmed for a
+// still-working order, with its average price (0 = not reported). The
+// quantity is cumulative, so a smaller report never lowers it. A tracker that
+// later ends with no broker answer — a network error on the last poll, a stale
+// day — still journals these shares (AUD-135).
+func (d *DB) NoteTrackerFill(clientOrderID string, qty, price float64) error {
+	if !(qty > 0) {
+		return nil
+	}
+	var p any
+	if price > 0 {
+		p = price
+	}
+	_, err := d.SQL.Exec(`UPDATE order_trackers SET
+            last_fill_price = CASE WHEN ?1 > last_filled_qty THEN ?2 ELSE COALESCE(?2, last_fill_price) END,
+            last_filled_qty = ?1
+        WHERE client_order_id = ?3 AND ?1 >= last_filled_qty`, qty, p, clientOrderID)
+	return err
+}
+
+// TrackerFill returns what NoteTrackerFill kept for this order; zeros when
+// nothing was confirmed or the tracker is gone.
+func (d *DB) TrackerFill(clientOrderID string) (qty, price float64, err error) {
+	var q, pr sql.NullFloat64
+	err = d.SQL.QueryRow(`SELECT last_filled_qty, last_fill_price FROM order_trackers WHERE client_order_id=?`, clientOrderID).Scan(&q, &pr)
+	if err == sql.ErrNoRows {
+		return 0, 0, nil
+	}
+	return q.Float64, pr.Float64, err
+}
+
 // ClaimFillQty books `filled` as the total executed quantity journaled for this
 // order and returns how much of it is new. A replay of the same fill — the poll
 // that runs again after a restart between writing the trade and stamping the

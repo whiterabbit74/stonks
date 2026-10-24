@@ -409,6 +409,17 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 		if err := e.stampTrackerStatus(id, status); err != nil {
 			return false, err
 		}
+		// A partial fill is known only from this answer. Keep it, so that a
+		// tracker ending later with no answer still journals these shares
+		// (AUD-135).
+		if q := fillQtyFrom(detail); q > 0 {
+			if err := e.DB.NoteTrackerFill(id, q, fillPriceFrom(detail)); err != nil {
+				e.logAuto("tracker_fill_persist_failed", e.metaCorr(id), map[string]any{
+					"clientOrderId": id, "filledQty": q, "error": err.Error(),
+				})
+				return false, err
+			}
+		}
 		e.logAuto("order_poll", e.metaCorr(id), map[string]any{
 			"clientOrderId": id, "status": status, "symbol": t["symbol"],
 		})
@@ -577,7 +588,7 @@ func (e *Engine) ResolveTracker(clientOrderID, outcome, note string, filledPrice
 	corr := e.metaCorr(clientOrderID)
 	var done bool
 	if outcome == "absent" {
-		done = e.finalizeTracker(t, "terminal_absent")
+		done = e.finalizeTrackerAsIs(t, nil, "terminal_absent")
 	} else {
 		detail := map[string]any{}
 		if filledPrice > 0 {
@@ -586,7 +597,7 @@ func (e *Engine) ResolveTracker(clientOrderID, outcome, note string, filledPrice
 		if filledQty > 0 {
 			detail["filled_qty"] = filledQty
 		}
-		done = e.finalizeTrackerStatus(t, detail, "filled")
+		done = e.finalizeTrackerAsIs(t, detail, "filled")
 	}
 	// Отказ записи исполнения или статуса — не «разрешено»: оператор получал
 	// ok, а заявка оставалась висеть (AUD-163).
@@ -616,7 +627,40 @@ func (e *Engine) finalizeTracker(t map[string]any, status string) bool {
 
 // finalizeTrackerStatus reports whether the fill and the final status were
 // both written; false leaves the tracker pending for the next poll.
+//
+// An ending whose answer carries no executed quantity — a network error on the
+// last poll, a stale day, the wheel running out — takes the last fill the
+// broker confirmed while the order was working. Ending it on nothing dropped
+// shares already bought or sold from the journal (AUD-135). "filled" without
+// a quantity means the whole order and keeps its own fallback.
 func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, status string) bool {
+	if status != "filled" && !(fillQtyFrom(detail) > 0) {
+		id := fmt.Sprint(t["clientOrderId"])
+		qty, price, err := e.DB.TrackerFill(id)
+		if err != nil {
+			e.logAuto("tracker_fill_read_failed", e.metaCorr(id), map[string]any{
+				"clientOrderId": id, "status": status, "error": err.Error(),
+			})
+			return false
+		}
+		if qty > 0 {
+			known := map[string]any{}
+			for k, v := range detail {
+				known[k] = v
+			}
+			known["filled_qty"] = qty
+			if price > 0 {
+				known["filled_price"] = price
+			}
+			detail = known
+		}
+	}
+	return e.finalizeTrackerAsIs(t, detail, status)
+}
+
+// finalizeTrackerAsIs is finalizeTrackerStatus without the last known fill:
+// for an operator's resolution, which states the outcome itself.
+func (e *Engine) finalizeTrackerAsIs(t map[string]any, detail map[string]any, status string) bool {
 	id := fmt.Sprint(t["clientOrderId"])
 	// Record the trade before marking the tracker final so a waiter that
 	// keys off pending status cannot observe a filled tracker with no row.
