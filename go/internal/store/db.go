@@ -1762,7 +1762,7 @@ func (d *DB) MarkEMATriggered(id, action string, deviationPct float64, at string
 
 func (d *DB) RecordEMAInfoSide(id, side, at string) error {
 	_, err := d.SQL.Exec(`UPDATE telegram_ema_alerts SET info_last_side=?, info_last_notified_at=COALESCE(?, info_last_notified_at), updated_at=datetime('now') WHERE id=?`,
-		side, at, id)
+		side, nullText(at), id)
 	return err
 }
 

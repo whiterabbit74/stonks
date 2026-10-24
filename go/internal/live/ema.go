@@ -236,8 +236,16 @@ func (e *Engine) persistEmaAfterSend(alerts []EmaEval, stage string) {
 		}
 	}
 	for _, a := range alerts {
-		if a.DataOK && a.InfoCrossing != "" && a.InfoSide != "" && a.ID != "" {
-			if err := e.DB.RecordEMAInfoSide(a.ID, a.InfoSide, now); err != nil {
+		// The side is kept on every valid reading, not only on a crossing: a
+		// crossing is measured against the stored side, and a new alert has
+		// none, so keeping it only on a crossing never started (AUD-172). The
+		// notification time moves only when there was something to notify.
+		if a.DataOK && a.InfoSide != "" && a.ID != "" {
+			at := ""
+			if a.InfoCrossing != "" {
+				at = now
+			}
+			if err := e.DB.RecordEMAInfoSide(a.ID, a.InfoSide, at); err != nil {
 				e.logAuto("ema_persist_failed", "", map[string]any{"id": a.ID, "error": err.Error()})
 			}
 		}
