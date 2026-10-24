@@ -26,9 +26,14 @@ type Service struct {
 	DB   *store.DB
 	HTTP *http.Client
 	MCP  *MCP
-
-	mu sync.Mutex
 }
+
+// tokenMu сериализует обмен и запись токенов на весь процесс. Брокер,
+// источник котировок, HTTP-ручки и планировщик создают свои Service над одной
+// строкой robinhood_oauth; мьютекс на экземпляре их не разводил, и два
+// refresh одной парой перезаписывали друг друга (AUD-161).
+// ponytail: один замок на процесс — в нём одна база; замок на DB, если баз станет больше.
+var tokenMu sync.Mutex
 
 func New(db *store.DB) *Service {
 	s := &Service{DB: db, HTTP: &http.Client{Timeout: 20 * time.Second}}
@@ -116,6 +121,8 @@ func (s *Service) CompleteFromCallbackURL(raw string) error {
 	if redirect == "" {
 		redirect = RedirectURI
 	}
+	tokenMu.Lock()
+	defer tokenMu.Unlock()
 	row := s.DB.GetRobinhoodOAuth()
 	tok, err := s.exchange(url.Values{
 		"grant_type":    {"authorization_code"},
@@ -132,8 +139,8 @@ func (s *Service) CompleteFromCallbackURL(raw string) error {
 }
 
 func (s *Service) AccessToken() (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	tokenMu.Lock()
+	defer tokenMu.Unlock()
 	if s.DB == nil {
 		return "", fmt.Errorf("oauth store missing")
 	}
@@ -151,8 +158,8 @@ func (s *Service) AccessToken() (string, error) {
 }
 
 func (s *Service) Refresh() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	tokenMu.Lock()
+	defer tokenMu.Unlock()
 	return s.refreshLocked()
 }
 
