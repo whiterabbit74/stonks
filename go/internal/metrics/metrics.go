@@ -64,8 +64,13 @@ func (c *Calculator) totalReturn(finalValue float64) float64 {
 }
 
 func (c *Calculator) cagr(finalValue, years float64) float64 {
-	if c.initialCapital <= 0 || years <= 0 || finalValue <= 0 {
+	if c.initialCapital <= 0 || years <= 0 {
 		return 0
+	}
+	if finalValue <= 0 {
+		// Everything lost: (0^(1/years) - 1) * 100. Reporting 0 showed a wiped
+		// out account as a flat one (AUD-175).
+		return -100
 	}
 	return (math.Pow(finalValue/c.initialCapital, 1/years) - 1) * 100
 }
@@ -458,6 +463,8 @@ func BacktestMetrics(trades []types.Trade, equity []types.EquityPoint, initialCa
 		}
 		if growth > 0 && years > 0 {
 			cagr = (math.Pow(growth, 1/years) - 1) * 100
+		} else if years > 0 && finalValue <= 0 && (initialCapital > 0 || contribCount > 0) {
+			cagr = -100 // the account ended empty, as in Calculator.cagr (AUD-175)
 		}
 	}
 	maxDD := 0.0

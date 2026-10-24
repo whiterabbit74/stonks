@@ -67,12 +67,14 @@ func TestBlackScholesZeroSigmaIsFinite(t *testing.T) {
 	}
 }
 
-func TestCAGRNonPositiveFinalIsZero(t *testing.T) {
+// A non-positive final value is a total loss: -100%, finite, never NaN.
+// It used to be 0, which showed a wiped-out account as flat (AUD-175).
+func TestCAGRNonPositiveFinalIsTotalLoss(t *testing.T) {
 	m := metrics.New(nil, []types.EquityPoint{{Date: "2020-01-01", Value: 10000}, {Date: "2022-01-01", Value: -500}}, 10000, nil).All()
 	if math.IsNaN(m.CAGR) {
-		t.Fatal("CAGR must be 0, not NaN, when final value is not positive")
+		t.Fatal("CAGR must be finite, not NaN, when final value is not positive")
 	}
-	if m.CAGR != 0 {
-		t.Fatalf("CAGR %v want 0", m.CAGR)
+	if m.CAGR != -100 {
+		t.Fatalf("CAGR %v want -100", m.CAGR)
 	}
 }
