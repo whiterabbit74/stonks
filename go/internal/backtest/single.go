@@ -311,18 +311,13 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 				td := tickers[bestIdx]
 				targetInvestment := freeCapital * leverage
 				entryPrice := bestBar.Close
-				// Комиссия платится сверх залога, поэтому она может не влезть
-				// в остаток после округления до целых акций. Тогда покупается
-				// на акцию меньше, а не пропускается сигнал дня целиком
-				// (AUD-122).
-				for quantity := wholeShares(targetInvestment / entryPrice); quantity > 0; quantity-- {
+				// Комиссия платится сверх залога: при округлении до целых акций
+				// покупается на акцию меньше, а не пропускается сигнал (AUD-122).
+				if quantity := affordableShares(targetInvestment, freeCapital, entryPrice, leverage, strategy); quantity > 0 {
 					stockCost := quantity * entryPrice
 					entryCommission := commission(stockCost, strategy)
 					marginRequired := stockCost / leverage
 					totalCashRequired := marginRequired + entryCommission
-					if !(totalCashRequired > 0) || freeCapital < totalCashRequired {
-						continue
-					}
 					current = &singlePos{
 						ticker: td.Ticker, entryDate: bestBar.Date, entryPrice: entryPrice,
 						quantity: quantity, entryIndex: bestIdx, totalCost: marginRequired,
@@ -330,7 +325,6 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 					}
 					freeCapital -= totalCashRequired
 					totalInvested += totalCashRequired
-					break
 				}
 			}
 		}
