@@ -131,3 +131,76 @@ func TestMCPTokenFetchHonoursContext(t *testing.T) {
 		t.Fatalf("token fetch ignored the context: %v", took)
 	}
 }
+
+// AUD-162 (reopened): after a 401 the tool call refreshed the token through
+// Refresh() with no context, so a T-1 call waited for tokenMu and a slow
+// exchange well past its deadline.
+func TestUnauthorizedRefreshStopsAtDeadline(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	release := make(chan struct{})
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "A1", "refresh_token": "R1", "expires_in": 86400 * 7})
+	}))
+	t.Cleanup(tokenSrv.Close)
+	t.Cleanup(unblockAfter(release, 3*time.Second))
+	TokenURL = tokenSrv.URL
+	mcpSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(mcpSrv.Close)
+	later := time.Now().UTC().Add(48 * time.Hour).Format(time.RFC3339)
+	if err := db.SaveRobinhoodTokens("A0", "R0", "Bearer", "internal", later); err != nil {
+		t.Fatal(err)
+	}
+	s := New(db)
+	s.HTTP = tokenSrv.Client()
+	s.MCP = &MCP{HTTP: mcpSrv.Client(), Endpoint: mcpSrv.URL, Token: s.AccessTokenCtx}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err = s.CallToolCtx(ctx, "get_accounts", nil)
+	if took := time.Since(start); took > 2*time.Second {
+		t.Fatalf("refresh after 401 ignored the deadline: %v", took)
+	}
+	if err == nil || err.Error() == "NEEDS_REAUTH" {
+		t.Fatalf("err = %v; a deadline is not a dead token", err)
+	}
+}
+
+// The same limit on the initialisation lock: a call queued behind a slow
+// initialize of the same MCP returns at its own deadline.
+func TestEnsureSessionWaitStopsAtDeadline(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		w.WriteHeader(500)
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(unblockAfter(release, 3*time.Second))
+	c := &MCP{HTTP: srv.Client(), Endpoint: srv.URL}
+	go func() { _, _ = c.CallCtx(context.Background(), "tools/list", nil) }() // holds the init slot
+	time.Sleep(50 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if _, err := c.CallCtx(ctx, "tools/list", nil); err == nil {
+		t.Fatal("want a deadline error")
+	}
+	if took := time.Since(start); took > 2*time.Second {
+		t.Fatalf("queued call ignored its deadline: %v", took)
+	}
+}
+
+// unblockAfter closes release after d, so a regression fails on time instead
+// of hanging; the returned func closes it at cleanup.
+func unblockAfter(release chan struct{}, d time.Duration) func() {
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	time.AfterFunc(d, unblock)
+	return unblock
+}

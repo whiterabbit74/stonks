@@ -185,6 +185,20 @@ func (s *Service) Refresh() error {
 	return s.refreshLocked()
 }
 
+// RefreshCtx is Refresh bounded by the caller's deadline, like
+// AccessTokenCtx: the caller stops waiting for tokenMu and the exchange at its
+// deadline, while an exchange already started still stores the new pair.
+func (s *Service) RefreshCtx(ctx context.Context) error {
+	ch := make(chan error, 1)
+	go func() { ch <- s.Refresh() }()
+	select {
+	case err := <-ch:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 func (s *Service) refreshLocked() error {
 	if s.DB == nil {
 		return fmt.Errorf("oauth store missing")
@@ -322,12 +336,21 @@ func (s *Service) CallTool(name string, args map[string]any) (json.RawMessage, e
 // down to here so a stuck MCP call is cancelled instead of eating the whole
 // minute. See P1-1 in AUTOTRADE_ROADMAP.md.
 func (s *Service) CallToolCtx(ctx context.Context, name string, args map[string]any) (json.RawMessage, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if s.MCP == nil {
 		s.MCP = &MCP{HTTP: s.http(), Endpoint: MCPEndpoint, Token: s.AccessTokenCtx}
 	}
 	raw, err := s.MCP.CallToolCtx(ctx, name, args)
 	if err != nil && strings.Contains(err.Error(), "unauthorized") {
-		if rerr := s.Refresh(); rerr != nil {
+		// The refresh after a 401 is bounded by the same deadline: a plain
+		// Refresh() kept a T-1 call waiting for tokenMu and a 20 s exchange
+		// past the close (AUD-162).
+		if rerr := s.RefreshCtx(ctx); rerr != nil {
+			if ctx.Err() != nil {
+				return nil, rerr // out of time, not a dead token
+			}
 			return nil, fmt.Errorf("NEEDS_REAUTH")
 		}
 		s.MCP.mu.Lock()

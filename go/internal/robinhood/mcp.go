@@ -27,7 +27,7 @@ type MCP struct {
 	Token    func(context.Context) (string, error)
 
 	mu      sync.Mutex
-	initMu  sync.Mutex
+	initSem chan struct{} // one initialisation at a time; see ensureSession
 	session string
 	nextID  int
 	ready   bool
@@ -78,8 +78,23 @@ func (c *MCP) ListTools() (json.RawMessage, error) {
 }
 
 func (c *MCP) ensureSession(ctx context.Context) error {
-	c.initMu.Lock()
-	defer c.initMu.Unlock()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	c.mu.Lock()
+	if c.initSem == nil {
+		c.initSem = make(chan struct{}, 1)
+	}
+	sem := c.initSem
+	c.mu.Unlock()
+	// A semaphore rather than a mutex: a short call queued behind a slow
+	// initialisation of the same MCP returns at its own deadline (AUD-162).
+	select {
+	case sem <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	defer func() { <-sem }()
 	c.mu.Lock()
 	ready := c.ready
 	c.mu.Unlock()
