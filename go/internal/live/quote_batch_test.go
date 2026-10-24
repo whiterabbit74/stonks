@@ -81,7 +81,7 @@ func TestPrefetchUsesOneBatchCall(t *testing.T) {
 	qs := &batchQuotes{MemoryQuotes: MemoryQuotes{Bars: bars}, answer: payloads, batchOK: true}
 	e := batchEngine(t, qs)
 
-	e.prefetchQuotes([]string{"MSFT", "AAPL", "V"}, []string{"webull"})
+	e.prefetchQuotes([]string{"MSFT", "AAPL", "V"}, []string{"webull"}, backgroundWindow())
 
 	if len(qs.batches) != 1 || len(qs.batches[0]) != 3 {
 		t.Fatalf("want one batch for the whole list: %+v", qs.batches)
@@ -103,7 +103,7 @@ func TestPrefetchFallsBackWhenBatchFails(t *testing.T) {
 	qs := &batchQuotes{MemoryQuotes: MemoryQuotes{Bars: bars}}
 	e := batchEngine(t, qs)
 
-	e.prefetchQuotes([]string{"MSFT", "AAPL"}, []string{"webull"})
+	e.prefetchQuotes([]string{"MSFT", "AAPL"}, []string{"webull"}, backgroundWindow())
 
 	if len(qs.batches) != 1 {
 		t.Fatalf("want the batch attempted once: %+v", qs.batches)
@@ -125,7 +125,7 @@ func TestPrefetchBatchesTheFallbackProvider(t *testing.T) {
 	e := batchEngine(t, qs)
 	chain := []string{"finnhub", "webull"}
 
-	e.prefetchQuotes([]string{"MSFT", "AAPL", "V"}, chain)
+	e.prefetchQuotes([]string{"MSFT", "AAPL", "V"}, chain, backgroundWindow())
 
 	if len(qs.batches) != 1 {
 		t.Fatalf("want exactly one batch, for webull: %+v", qs.batches)
@@ -156,7 +156,7 @@ func TestPrefetchAsksPerSymbolForWhatTheBatchMissed(t *testing.T) {
 	qs := &batchQuotes{MemoryQuotes: MemoryQuotes{Bars: bars}, answer: payloads, batchOK: true}
 	e := batchEngine(t, qs)
 
-	e.prefetchQuotes([]string{"MSFT", "AAPL"}, []string{"webull"})
+	e.prefetchQuotes([]string{"MSFT", "AAPL"}, []string{"webull"}, backgroundWindow())
 
 	if len(qs.singles) != 1 || qs.singles[0] != "AAPL" {
 		t.Fatalf("only the unanswered symbol needs a call of its own: %v", qs.singles)

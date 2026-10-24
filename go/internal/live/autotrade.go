@@ -366,7 +366,7 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 			addQuote(sym)
 		}
 	}
-	e.prefetchQuotes(quoteSymbols, providerChain)
+	e.prefetchQuotes(quoteSymbols, providerChain, w)
 	var quotes []LiveQuote
 	for _, sym := range quoteSymbols {
 		w := watchBy[sym]

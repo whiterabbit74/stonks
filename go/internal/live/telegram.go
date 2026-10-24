@@ -400,7 +400,7 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 	for _, w := range watches {
 		watchSyms = append(watchSyms, fmt.Sprint(w["symbol"]))
 	}
-	e.prefetchQuotes(watchSyms, providerChain)
+	e.prefetchQuotes(watchSyms, providerChain, backgroundWindow())
 	emaAlerts, err := e.EvaluateEMAAlerts()
 	if err != nil {
 		out.Reason = "journal_unavailable"
@@ -1188,28 +1188,78 @@ type quoteBatcher interface {
 	QuoteBatch(symbols []string, provider string) (map[string]providers.QuotePayload, error)
 }
 
-func (e *Engine) prefetchQuotes(symbols []string, chain []string) {
+// prefetchQuotes warms the quote cache for symbols. On the T-1 path it waits
+// no longer than the window leaves after T1PlacementReserve: one hung provider
+// (three attempts, each up to the 30 s HTTP timeout) used to hold the whole
+// closing minute, and the order then found its window gone (AUD-147). A symbol
+// still in flight at that point is cached as unavailable, so evalWatch does not
+// start the same slow fetch again; the late answer replaces it when it lands.
+func (e *Engine) prefetchQuotes(symbols []string, chain []string, w execWindow) {
 	if len(symbols) == 0 {
 		return
 	}
-	e.prefetchBatch(symbols, chain)
-	sem := make(chan struct{}, 8)
-	done := make(chan struct{}, len(symbols))
-	for _, sym := range symbols {
-		sem <- struct{}{}
-		go func(s string) {
-			defer func() { <-sem; done <- struct{}{} }()
-			defer func() {
-				if rec := recover(); rec != nil {
-					log.Printf("live: prefetchQuotes panic symbol=%s: %v", s, rec)
-				}
-			}()
-			_, _, _ = e.liveQuote(s, chain)
-		}(sym)
+	if len(chain) == 0 {
+		chain = realtimeQuoteProviders
 	}
-	for range symbols {
-		<-done
+	started := time.Now()
+	var mu sync.Mutex
+	pending := map[string]bool{}
+	for _, s := range symbols {
+		pending[s] = true
 	}
+	all := make(chan struct{})
+	go func() {
+		defer close(all)
+		e.prefetchBatch(symbols, chain)
+		sem := make(chan struct{}, 8)
+		done := make(chan struct{}, len(symbols))
+		for _, sym := range symbols {
+			sem <- struct{}{}
+			go func(s string) {
+				defer func() { <-sem; done <- struct{}{} }()
+				defer func() {
+					if rec := recover(); rec != nil {
+						log.Printf("live: prefetchQuotes panic symbol=%s: %v", s, rec)
+					}
+				}()
+				_, _, _ = e.liveQuote(s, chain)
+				mu.Lock()
+				delete(pending, s)
+				mu.Unlock()
+			}(sym)
+		}
+		for range symbols {
+			<-done
+		}
+	}()
+	if w.deadline.IsZero() {
+		<-all
+		return
+	}
+	timer := time.NewTimer(max(e.timeLeft(w)-T1PlacementReserve, 0))
+	defer timer.Stop()
+	select {
+	case <-all:
+		return
+	case <-timer.C:
+	}
+	mu.Lock()
+	late := len(pending)
+	e.mu.Lock()
+	if e.quoteCache == nil {
+		e.quoteCache = map[string]quoteCacheEntry{}
+	}
+	for sym := range pending {
+		key := quoteCacheKey(sym, chain)
+		if c, ok := e.quoteCache[key]; ok && c.err == nil && c.at.After(started) {
+			continue // landed just now
+		}
+		e.quoteCache[key] = quoteCacheEntry{err: fmt.Errorf("quote not received before the T-1 deadline"), at: time.Now()}
+		capQuoteCache(e.quoteCache, key)
+	}
+	e.mu.Unlock()
+	mu.Unlock()
+	e.logAuto("quote_prefetch_deadline", "", map[string]any{"symbols": late})
 }
 
 // prefetchBatch asks every provider in the chain that has a batch endpoint for
