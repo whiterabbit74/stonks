@@ -50,3 +50,16 @@ func affordableShares(budget, cash, price, leverage float64, strategy types.Stra
 	}
 	return 0
 }
+
+// ibsContext — IBS входа и выхода для контекста сделки. Бар с Close вне
+// [Low, High] даёт NaN, а JSON его не кодирует: один такой выход ронял ответ
+// всего бэктеста в 500 (AUD-154). Нечисловое значение опускается.
+func ibsContext(entry, exit float64) map[string]float64 {
+	out := map[string]float64{}
+	for k, v := range map[string]float64{"IBS": entry, "exitIBS": exit} {
+		if !math.IsNaN(v) && !math.IsInf(v, 0) {
+			out[k] = v
+		}
+	}
+	return out
+}

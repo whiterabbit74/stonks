@@ -149,7 +149,7 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 						Duration: duration, ExitReason: exitReason,
 						Context: &types.TradeContext{
 							MarketConditions:  "normal",
-							IndicatorValues:   map[string]float64{"IBS": position.entryIBS, "exitIBS": ibs},
+							IndicatorValues:   ibsContext(position.entryIBS, ibs),
 							Trend:             "sideways",
 							InitialInvestment: cashInvested,
 						},
@@ -212,7 +212,7 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 				Duration: duration, ExitReason: exitReason,
 				Context: &types.TradeContext{
 					MarketConditions:  "normal",
-					IndicatorValues:   map[string]float64{"IBS": position.entryIBS, "exitIBS": lastIBS},
+					IndicatorValues:   ibsContext(position.entryIBS, lastIBS),
 					Trend:             "sideways",
 					InitialInvestment: cashInvested,
 				},

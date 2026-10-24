@@ -266,7 +266,7 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 							Duration: daysSinceEntry, ExitReason: exitReason,
 							Context: &types.TradeContext{
 								Ticker: ticker, MarketConditions: "normal",
-								IndicatorValues: map[string]float64{"IBS": current.entryIBS, "exitIBS": ibs},
+								IndicatorValues: ibsContext(current.entryIBS, ibs),
 								Trend:           "sideways", InitialInvestment: totalCashInvested,
 								GrossInvestment: current.quantity * current.entryPrice,
 								Leverage:        leverage, LeverageDebt: stockValueAtEntry - current.totalCost,
@@ -379,7 +379,7 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 				Duration: duration, ExitReason: "end_of_data",
 				Context: &types.TradeContext{
 					Ticker: current.ticker, MarketConditions: "normal",
-					IndicatorValues: map[string]float64{"IBS": current.entryIBS, "exitIBS": exitIBS},
+					IndicatorValues: ibsContext(current.entryIBS, exitIBS),
 					Trend:           "sideways", InitialInvestment: totalCashInvested,
 					GrossInvestment: current.quantity * current.entryPrice,
 					Leverage:        leverage, LeverageDebt: stockValueAtEntry - current.totalCost,

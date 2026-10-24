@@ -38,6 +38,9 @@ func validateBars(bars []types.OHLC) []string {
 		prev = d
 		if b.High < b.Low {
 			reasons = append(reasons, "high < low on "+d)
+		} else if b.Close < b.Low || b.Close > b.High {
+			// IBS такого бара — NaN (AUD-154).
+			reasons = append(reasons, "close outside [low, high] on "+d)
 		}
 	}
 	return reasons
