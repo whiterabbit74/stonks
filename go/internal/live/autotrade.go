@@ -1629,6 +1629,23 @@ func (e *Engine) manualOrder(br Broker, brokerName, symbol, side string, qty flo
 		key = brokerName + ":" + symbol + ":" + action
 	}
 
+	// Slot before the pending read, as in submitEvaluated (AUD-004).
+	e.mu.Lock()
+	if e.reservations == nil {
+		e.reservations = map[string]string{}
+	}
+	if _, taken := e.reservations[key]; taken {
+		e.mu.Unlock()
+		errKey := "pending_" + action + "_submission_exists"
+		return OrderResult{Error: errKey, Symbol: symbol, Side: side}, fmt.Errorf("%s", errKey)
+	}
+	e.reservations[key] = "submitting"
+	e.mu.Unlock()
+	defer func() {
+		e.mu.Lock()
+		delete(e.reservations, key)
+		e.mu.Unlock()
+	}()
 	var pending map[string]any
 	var pendErr error
 	if action == "entry" {
@@ -1646,23 +1663,6 @@ func (e *Engine) manualOrder(br Broker, brokerName, symbol, side string, qty flo
 	if action == "entry" && e.trackerPersistBlocked(brokerName) {
 		return OrderResult{Error: "execution_unknown", Symbol: symbol, Side: side}, fmt.Errorf("execution_unknown")
 	}
-
-	e.mu.Lock()
-	if e.reservations == nil {
-		e.reservations = map[string]string{}
-	}
-	if _, taken := e.reservations[key]; taken {
-		e.mu.Unlock()
-		errKey := "pending_" + action + "_submission_exists"
-		return OrderResult{Error: errKey, Symbol: symbol, Side: side}, fmt.Errorf("%s", errKey)
-	}
-	e.reservations[key] = "submitting"
-	e.mu.Unlock()
-	defer func() {
-		e.mu.Lock()
-		delete(e.reservations, key)
-		e.mu.Unlock()
-	}()
 
 	meta := orderMeta{
 		Source: source, Symbol: symbol, Action: action, Quantity: qty,

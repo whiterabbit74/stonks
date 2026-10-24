@@ -286,6 +286,27 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 	if brokerName != "" {
 		key = brokerName + ":" + key
 	}
+	// The slot is taken before the pending trackers are read and held until
+	// this order's tracker is written. Read first, a request delayed between
+	// the read and the slot found the slot free once the first order released
+	// it and sent a second one while the first was still working (AUD-004).
+	e.mu.Lock()
+	if e.reservations == nil {
+		e.reservations = map[string]string{}
+	}
+	if _, taken := e.reservations[key]; taken {
+		e.mu.Unlock()
+		ev.Broker = map[string]any{"submitted": false, "error": "pending_" + action + "_submission_exists"}
+		e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_submission"})
+		return ev
+	}
+	e.reservations[key] = "submitting"
+	e.mu.Unlock()
+	defer func() {
+		e.mu.Lock()
+		delete(e.reservations, key)
+		e.mu.Unlock()
+	}()
 	var pending map[string]any
 	var pendErr error
 	if action == "entry" {
@@ -326,23 +347,6 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 		e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "tracker_persist_failed", "broker": brokerName})
 		return ev
 	}
-	e.mu.Lock()
-	if e.reservations == nil {
-		e.reservations = map[string]string{}
-	}
-	if _, taken := e.reservations[key]; taken {
-		e.mu.Unlock()
-		ev.Broker = map[string]any{"submitted": false, "error": "pending_" + action + "_submission_exists"}
-		e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_submission"})
-		return ev
-	}
-	e.reservations[key] = "submitting"
-	e.mu.Unlock()
-	defer func() {
-		e.mu.Lock()
-		delete(e.reservations, key)
-		e.mu.Unlock()
-	}()
 
 	enabled, _ := ev.AutoTrading["enabled"].(bool)
 	if !enabled {
