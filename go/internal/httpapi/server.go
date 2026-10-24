@@ -826,25 +826,15 @@ func (s *Server) savePayload(w http.ResponseWriter, payload map[string]any, mark
 		return
 	}
 	adj, _ := payload["adjustedForSplits"].(bool)
-	if err := s.DB.SaveDataset(ticker, name, strPtr(payload["companyName"]), strPtr(payload["tag"]), bars, adj); err != nil {
+	var events []types.SplitEvent
+	if raw, ok := payload["splits"]; ok {
+		events = decodeSplitEvents(raw)
+	}
+	// markApplied: the caller states these prices are already back-adjusted,
+	// so the events that come with them are baked in, not pending.
+	if err := s.DB.SaveImport(ticker, name, strPtr(payload["companyName"]), strPtr(payload["tag"]), bars, adj, events, markApplied); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
-	}
-	if raw, ok := payload["splits"]; ok {
-		if events := decodeSplitEvents(raw); events != nil {
-			if err := s.DB.UpsertSplits(ticker, events); err != nil {
-				writeJSON(w, 500, map[string]any{"error": err.Error()})
-				return
-			}
-		}
-	}
-	// The caller states these prices are already back-adjusted, so the events
-	// that come with them are baked in, not pending.
-	if markApplied {
-		if err := s.DB.MarkSplitsApplied(ticker); err != nil {
-			writeJSON(w, 500, map[string]any{"error": err.Error()})
-			return
-		}
 	}
 	hints, err := s.detectSplitHints(ticker, bars)
 	if err != nil {

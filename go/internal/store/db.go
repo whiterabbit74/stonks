@@ -602,7 +602,30 @@ func (d *DB) GetDataset(id string) (map[string]any, error) {
 }
 
 func (d *DB) SaveDataset(ticker, name, company, tag string, bars []types.OHLC, adjusted bool) error {
-	return d.saveDataset(ticker, name, company, tag, bars, adjusted, nil)
+	return d.saveDataset(ticker, name, company, tag, bars, adjusted, nil, nil)
+}
+
+// SaveImport записывает импорт цен вместе с пришедшими событиями сплитов и,
+// если вызывающий заявил, что цены уже их несут (markApplied), отметками
+// applied — одной транзакцией. Раздельно отказ между шагами оставлял
+// пересчитанные цены с ожидающим сплитом, и расчёт делил их ещё раз (AUD-150).
+// Цены уже в той базе, что заявлена, поэтому коэффициенты пишутся без
+// перебазирования.
+func (d *DB) SaveImport(ticker, name, company, tag string, bars []types.OHLC, adjusted bool, events []types.SplitEvent, markApplied bool) error {
+	return d.saveDataset(ticker, name, company, tag, bars, adjusted, nil, func(tx *sql.Tx, ticker string) error {
+		for _, e := range events {
+			if _, err := tx.Exec(`INSERT INTO splits (ticker, date, factor, applied) VALUES (?, ?, ?, 0)
+                ON CONFLICT(ticker, date) DO UPDATE SET factor=excluded.factor,
+                applied=CASE WHEN splits.factor = excluded.factor THEN splits.applied ELSE 0 END`, ticker, e.Date, e.Factor); err != nil {
+				return err
+			}
+		}
+		if markApplied {
+			_, err := tx.Exec(`UPDATE splits SET applied = 1 WHERE ticker = ?`, ticker)
+			return err
+		}
+		return nil
+	})
 }
 
 // SaveDatasetWithSplitsApplied записывает пересчитанные цены и отметки
@@ -611,10 +634,10 @@ func (d *DB) SaveDataset(ticker, name, company, tag string, bars []types.OHLC, a
 // Отмечаются ровно те даты, которые применялись, поэтому событие, добавленное
 // параллельно, не получает applied.
 func (d *DB) SaveDatasetWithSplitsApplied(ticker, name, company, tag string, bars []types.OHLC, appliedDates []string) error {
-	return d.saveDataset(ticker, name, company, tag, bars, true, appliedDates)
+	return d.saveDataset(ticker, name, company, tag, bars, true, appliedDates, nil)
 }
 
-func (d *DB) saveDataset(ticker, name, company, tag string, bars []types.OHLC, adjusted bool, appliedDates []string) error {
+func (d *DB) saveDataset(ticker, name, company, tag string, bars []types.OHLC, adjusted bool, appliedDates []string, extra func(*sql.Tx, string) error) error {
 	ticker = SafeTicker(ticker)
 	if ticker == "" {
 		return fmt.Errorf("Неверный тикер")
@@ -673,6 +696,11 @@ func (d *DB) saveDataset(ticker, name, company, tag string, bars []types.OHLC, a
 	}
 	for _, date := range appliedDates {
 		if _, err := tx.Exec(`UPDATE splits SET applied = 1 WHERE ticker = ? AND date = ?`, ticker, tradingdate.DateKey(date)); err != nil {
+			return err
+		}
+	}
+	if extra != nil {
+		if err := extra(tx, ticker); err != nil {
 			return err
 		}
 	}
