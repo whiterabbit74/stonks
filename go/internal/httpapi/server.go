@@ -986,37 +986,17 @@ func (s *Server) handleApplySplits(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 404, map[string]any{"error": "Датасет не найден"})
 		return
 	}
-	bars := decodeBars(ds["data"])
-	out, applied, err := s.applyStoredSplits(id, bars)
+	applied, err := s.DB.ApplyPendingSplits(id)
 	if err != nil {
-		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать сплиты"})
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
-	if len(applied) == 0 {
+	if applied == 0 {
 		// Nothing left to bake in: the flag of the dataset stays as it is.
 		writeJSON(w, 200, map[string]any{"success": true, "id": id, "alreadyApplied": true, "message": "Датасет уже пересчитан с учётом сплитов"})
 		return
 	}
-	// Цены и отметки применённых событий пишутся одной транзакцией: иначе
-	// отказ на отметке оставлял поделённые цены, и повтор делил их ещё раз
-	// (AUD-096).
-	if err := s.persistDatasetWithSplitsApplied(id, ds, out, applied); err != nil {
-		writeJSON(w, 500, map[string]any{"error": err.Error()})
-		return
-	}
 	writeJSON(w, 200, map[string]any{"success": true, "id": id, "message": "Датасет пересчитан с учётом сплитов"})
-}
-
-func pricesUnchanged(a, b []types.OHLC) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i].Close != b[i].Close {
-			return false
-		}
-	}
-	return true
 }
 
 func strPtr(v any) string {

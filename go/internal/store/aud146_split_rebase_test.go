@@ -32,15 +32,18 @@ func TestAppliedSplitEditRebasesPrices(t *testing.T) {
 		return len(p)
 	}
 	// Raw 120 before the 2026-01-02 split, applied with factor 2 → 60.
-	half := []types.OHLC{
-		{Date: "2026-01-01", Open: 60, High: 60, Low: 60, Close: 60, Volume: 200},
+	raw := []types.OHLC{
+		{Date: "2026-01-01", Open: 120, High: 120, Low: 120, Close: 120, Volume: 100},
 		{Date: "2026-01-02", Open: 60, High: 60, Low: 60, Close: 60, Volume: 100},
+	}
+	if err := db.SaveDataset("X", "X", "", "", raw, false); err != nil {
+		t.Fatal(err)
 	}
 	if err := db.ReplaceSplits("X", []types.SplitEvent{{Date: "2026-01-02", Factor: 2}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SaveDatasetWithSplitsApplied("X", "X", "", "", half, []string{"2026-01-02"}); err != nil {
-		t.Fatal(err)
+	if n, err := db.ApplyPendingSplits("X"); err != nil || n != 1 || closeOf() != 60 {
+		t.Fatalf("apply: n %d err %v close %v, want 1 nil 60", n, err, closeOf())
 	}
 
 	if err := db.UpsertSplits("X", []types.SplitEvent{{Date: "2026-01-02", Factor: 3}}); err != nil {

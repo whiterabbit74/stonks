@@ -602,7 +602,7 @@ func (d *DB) GetDataset(id string) (map[string]any, error) {
 }
 
 func (d *DB) SaveDataset(ticker, name, company, tag string, bars []types.OHLC, adjusted bool) error {
-	return d.saveDataset(ticker, name, company, tag, bars, adjusted, nil, nil)
+	return d.saveDataset(ticker, name, company, tag, bars, adjusted, nil)
 }
 
 // SaveImport записывает импорт цен вместе с пришедшими событиями сплитов и,
@@ -612,7 +612,7 @@ func (d *DB) SaveDataset(ticker, name, company, tag string, bars []types.OHLC, a
 // Цены уже в той базе, что заявлена, поэтому коэффициенты пишутся без
 // перебазирования.
 func (d *DB) SaveImport(ticker, name, company, tag string, bars []types.OHLC, adjusted bool, events []types.SplitEvent, markApplied bool) error {
-	return d.saveDataset(ticker, name, company, tag, bars, adjusted, nil, func(tx *sql.Tx, ticker string) error {
+	return d.saveDataset(ticker, name, company, tag, bars, adjusted, func(tx *sql.Tx, ticker string) error {
 		for _, e := range events {
 			if _, err := tx.Exec(`INSERT INTO splits (ticker, date, factor, applied) VALUES (?, ?, ?, 0)
                 ON CONFLICT(ticker, date) DO UPDATE SET factor=excluded.factor,
@@ -628,16 +628,7 @@ func (d *DB) SaveImport(ticker, name, company, tag string, bars []types.OHLC, ad
 	})
 }
 
-// SaveDatasetWithSplitsApplied записывает пересчитанные цены и отметки
-// применённых событий одной транзакцией. Раздельно отказ записи отметки
-// оставлял уже поделённые цены, и повтор запроса делил их ещё раз (AUD-096).
-// Отмечаются ровно те даты, которые применялись, поэтому событие, добавленное
-// параллельно, не получает applied.
-func (d *DB) SaveDatasetWithSplitsApplied(ticker, name, company, tag string, bars []types.OHLC, appliedDates []string) error {
-	return d.saveDataset(ticker, name, company, tag, bars, true, appliedDates, nil)
-}
-
-func (d *DB) saveDataset(ticker, name, company, tag string, bars []types.OHLC, adjusted bool, appliedDates []string, extra func(*sql.Tx, string) error) error {
+func (d *DB) saveDataset(ticker, name, company, tag string, bars []types.OHLC, adjusted bool, extra func(*sql.Tx, string) error) error {
 	ticker = SafeTicker(ticker)
 	if ticker == "" {
 		return fmt.Errorf("Неверный тикер")
@@ -691,11 +682,6 @@ func (d *DB) saveDataset(ticker, name, company, tag string, bars []types.OHLC, a
 		// Сырые цены не несут ни одного сплита: старые отметки прошлого
 		// датасета иначе выдали бы новый импорт за уже пересчитанный (AUD-097).
 		if _, err := tx.Exec(`UPDATE splits SET applied = 0 WHERE ticker = ?`, ticker); err != nil {
-			return err
-		}
-	}
-	for _, date := range appliedDates {
-		if _, err := tx.Exec(`UPDATE splits SET applied = 1 WHERE ticker = ? AND date = ?`, ticker, tradingdate.DateKey(date)); err != nil {
 			return err
 		}
 	}
@@ -942,6 +928,60 @@ func (d *DB) ListPendingSplits(symbol string) ([]types.SplitEvent, error) {
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// ApplyPendingSplits делит сохранённые цены по ожидающим событиям и отмечает
+// их применёнными одной транзакцией. Раньше обработчик читал историю, считал и
+// перезаписывал её целиком: refresh между чтением и записью терял новый день,
+// а отметка подтверждала коэффициент, изменённый после чтения (AUD-151).
+// Атомарность цен и отметок — AUD-096. Возвращает число применённых событий.
+func (d *DB) ApplyPendingSplits(symbol string) (int, error) {
+	ticker := SafeTicker(symbol)
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.Query(`SELECT date, factor FROM splits WHERE ticker = ? AND applied = 0`, ticker)
+	if err != nil {
+		return 0, err
+	}
+	var events []types.SplitEvent
+	for rows.Next() {
+		var e types.SplitEvent
+		if err := rows.Scan(&e.Date, &e.Factor); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		events = append(events, e)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for _, e := range events {
+		if !(e.Factor > 0) || math.IsInf(e.Factor, 0) || e.Factor == 1 {
+			continue
+		}
+		// Как splits.AdjustOHLC: цены делятся, объём умножается, adj_close
+		// без значения берётся от close.
+		if _, err := tx.Exec(`UPDATE ohlc SET open = ROUND(open/?1, 6), high = ROUND(high/?1, 6), low = ROUND(low/?1, 6),
+                close = ROUND(close/?1, 6), adj_close = ROUND(COALESCE(adj_close, close)/?1, 6),
+                volume = CAST(ROUND(volume*?1) AS INTEGER)
+            WHERE ticker = ?2 AND date < ?3`, e.Factor, ticker, tradingdate.DateKey(e.Date)); err != nil {
+			return 0, err
+		}
+	}
+	if len(events) == 0 {
+		return 0, nil
+	}
+	if _, err := tx.Exec(`UPDATE splits SET applied = 1 WHERE ticker = ? AND applied = 0`, ticker); err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(`UPDATE dataset_meta SET adjusted_for_splits = 1, updated_at = datetime('now') WHERE ticker = ?`, ticker); err != nil {
+		return 0, err
+	}
+	return len(events), tx.Commit()
 }
 
 // MarkSplitsApplied records that the stored prices of the symbol now carry
