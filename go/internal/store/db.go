@@ -1012,6 +1012,9 @@ func (d *DB) UpsertSplits(symbol string, events []types.SplitEvent) error {
 				return err
 			}
 			applied = 1
+			// Повтор даты в том же запросе переводит цены уже с этого
+			// коэффициента, а не с прочитанного до цикла (AUD-168).
+			prev[date] = e.Factor
 		}
 		if _, err := tx.Exec(`INSERT INTO splits (ticker, date, factor, applied) VALUES (?, ?, ?, ?)
             ON CONFLICT(ticker, date) DO UPDATE SET factor=excluded.factor, applied=excluded.applied`, ticker, e.Date, e.Factor, applied); err != nil {

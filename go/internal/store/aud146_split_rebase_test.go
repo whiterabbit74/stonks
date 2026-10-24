@@ -141,3 +141,37 @@ func TestDeleteAllSplitsRestoresPrices(t *testing.T) {
 		t.Fatalf("re-applied split: close %v, want 60", c)
 	}
 }
+
+// AUD-168: a PATCH carrying the same date twice rebased the prices from the
+// factor read before the loop each time: 60 → [3, 4] gave 20 instead of 30.
+func TestUpsertSplitsRepeatedDateRebasesOnce(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	raw := []types.OHLC{
+		{Date: "2026-01-01", Open: 120, High: 120, Low: 120, Close: 120, Volume: 100},
+		{Date: "2026-01-02", Open: 60, High: 60, Low: 60, Close: 60, Volume: 100},
+	}
+	if err := db.SaveDataset("X", "X", "", "", raw, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ReplaceSplits("X", []types.SplitEvent{{Date: "2026-01-02", Factor: 2}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ApplyPendingSplits("X"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertSplits("X", []types.SplitEvent{{Date: "2026-01-02", Factor: 3}, {Date: "2026-01-02", Factor: 4}}); err != nil {
+		t.Fatal(err)
+	}
+	ds, _ := db.GetDataset("X")
+	if c := ds["data"].([]types.OHLC)[0].Close; c != 30 {
+		t.Fatalf("repeated date: close %v, want 120/4 = 30", c)
+	}
+	list, err := db.ListSplits("X")
+	if err != nil || len(list) != 1 || list[0].Factor != 4 {
+		t.Fatalf("stored splits %+v err %v, want one event with factor 4", list, err)
+	}
+}
