@@ -63,10 +63,9 @@ func TestAUD006CleanAppliesCommission(t *testing.T) {
 			double.Metrics.TotalReturn, charged.Metrics.TotalReturn)
 	}
 
-	// An entry the account cannot cover once the fee is added is not taken,
-	// the same rule RunSinglePosition applies: 90% of 10000 in shares plus a
-	// 5000 fee does not fit in the balance.
-	unaffordable := runWithCommission(types.Commission{Type: "fixed", Fixed: 5000})
+	// A fee the balance cannot cover even for one share blocks the entry. A
+	// smaller one only shrinks the size, as in RunSinglePosition (AUD-159).
+	unaffordable := runWithCommission(types.Commission{Type: "fixed", Fixed: 10000})
 	if len(unaffordable.Trades) != 0 {
 		t.Fatalf("a fee larger than the free cash must block the entry, got %d trades", len(unaffordable.Trades))
 	}

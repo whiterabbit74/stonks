@@ -80,7 +80,7 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 					if nextBar == nil {
 						return currentCapital
 					}
-					quantity := wholeShares(investmentAmount / nextBar.Open)
+					quantity := affordableShares(investmentAmount, currentCapital, nextBar.Open, 1, strategy)
 					if quantity > 0 {
 						totalCost := quantity * nextBar.Open
 						entryCommission := commission(totalCost, strategy)
@@ -94,7 +94,7 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 						}
 					}
 				} else {
-					quantity := wholeShares(investmentAmount / bar.Close)
+					quantity := affordableShares(investmentAmount, currentCapital, bar.Close, 1, strategy)
 					if quantity > 0 {
 						totalCost := quantity * bar.Close
 						entryCommission := commission(totalCost, strategy)
