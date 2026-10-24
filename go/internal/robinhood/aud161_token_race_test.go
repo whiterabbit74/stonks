@@ -64,3 +64,36 @@ func TestRefreshIsSerializedAcrossServices(t *testing.T) {
 		t.Fatalf("refreshes = %d, want 1", n)
 	}
 }
+
+// AUD-148: a refresh in flight when Disconnect cleared the row wrote the new
+// pair back afterwards.
+func TestRevokeWaitsForInFlightRefresh(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	inFlight := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(inFlight)
+		time.Sleep(150 * time.Millisecond)
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "A1", "refresh_token": "R1", "expires_in": 3600})
+	}))
+	t.Cleanup(srv.Close)
+	TokenURL = srv.URL
+	if err := db.SaveRobinhoodTokens("A0", "R0", "Bearer", "internal", ""); err != nil {
+		t.Fatal(err)
+	}
+	a, b := New(db), New(db)
+	a.HTTP = srv.Client()
+	done := make(chan error, 1)
+	go func() { done <- a.Refresh() }()
+	<-inFlight
+	if err := b.Revoke(); err != nil {
+		t.Fatal(err)
+	}
+	<-done
+	if row := db.GetRobinhoodOAuth(); row.AccessToken != "" || row.RefreshToken != "" {
+		t.Fatalf("tokens came back after disconnect: %+v", row)
+	}
+}

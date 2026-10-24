@@ -183,10 +183,14 @@ func (s *Service) refreshLocked() error {
 	return s.persistToken(tok)
 }
 
+// Revoke стирает токены под тем же замком, что refresh: иначе обмен, начатый
+// до отключения, дописывал свежую пару после очистки (AUD-148).
 func (s *Service) Revoke() error {
 	if s.DB == nil {
 		return nil
 	}
+	tokenMu.Lock()
+	defer tokenMu.Unlock()
 	return s.DB.ClearRobinhoodTokens()
 }
 

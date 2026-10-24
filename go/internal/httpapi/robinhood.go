@@ -44,7 +44,10 @@ func (s *Server) handleRobinhoodOAuthComplete(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) handleRobinhoodOAuthDisconnect(w http.ResponseWriter, r *http.Request) {
-	_ = s.rh().Revoke()
+	if err := s.rh().Revoke(); err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось удалить токены Robinhood: " + err.Error()})
+		return
+	}
 	if s.Live != nil {
 		s.Live.DetachBroker("robinhood")
 	}
