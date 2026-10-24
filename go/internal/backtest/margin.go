@@ -184,31 +184,36 @@ func SimulateMargin(p MarginParams) MarginResult {
 				liq = &ev
 				events = append(events, ev)
 				pos = nil
-			} else if date == pos.plannedExitDate {
-				pnl := settle(pos.template.ExitPrice)
-				pnlPct := 0.0
-				if pos.marginUsed > 0 {
-					pnlPct = (pnl / pos.marginUsed) * 100
+			} else if date >= pos.plannedExitDate {
+				// Сделка, вошедшая в день выхода предыдущей (AUD-143), тоже
+				// может выходить сегодня: дневные события идут по очереди,
+				// а не одно на день (AUD-158). >=, а не ==: дата выхода
+				// могла не попасть в бары рынка.
+				for pos != nil && date >= pos.plannedExitDate {
+					pnl := settle(pos.template.ExitPrice)
+					pnlPct := 0.0
+					if pos.marginUsed > 0 {
+						pnlPct = (pnl / pos.marginUsed) * 100
+					}
+					t := pos.template
+					t.Quantity = pos.quantity
+					t.PnL = pnl
+					t.PnLPercent = pnlPct
+					t.Duration = tradingdate.DaysBetween(pos.entryDate, date)
+					if t.Context == nil {
+						t.Context = &types.TradeContext{}
+					}
+					t.Context.Leverage = p.Leverage
+					t.Context.MarginUsed = pos.marginUsed
+					t.Context.LeverageDebt = pos.borrowed
+					t.Context.GrossInvestment = pos.quantity * pos.entryPrice
+					t.Context.CurrentCapitalAfterExit = cash
+					sim = append(sim, t)
+					pos = nil
+					openOn(date)
 				}
-				t := pos.template
-				t.Quantity = pos.quantity
-				t.PnL = pnl
-				t.PnLPercent = pnlPct
-				t.Duration = tradingdate.DaysBetween(pos.entryDate, date)
-				if t.Context == nil {
-					t.Context = &types.TradeContext{}
-				}
-				t.Context.Leverage = p.Leverage
-				t.Context.MarginUsed = pos.marginUsed
-				t.Context.LeverageDebt = pos.borrowed
-				t.Context.GrossInvestment = pos.quantity * pos.entryPrice
-				t.Context.CurrentCapitalAfterExit = cash
-				sim = append(sim, t)
-				pos = nil
 				totalValue = cash
-				// A trade entering on the day the previous one exited
-				// (same-day re-entry) is opened now, not skipped (AUD-143).
-				if openOn(date); pos != nil {
+				if pos != nil {
 					totalValue = accountValue(bar.Close)
 				}
 			} else {
