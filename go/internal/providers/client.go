@@ -270,11 +270,11 @@ func (c *Client) Historical(symbol, provider string, startTs, endTs int64, adjus
 	case "twelve_data":
 		return c.twelveHistory(symbol, startTs, endTs)
 	case "polygon":
-		return c.polygonHistory(symbol, startTs, endTs)
+		return c.polygonHistory(symbol, startTs, endTs, adjustment)
 	case "webull":
 		return Historical{}, &HTTPError{400, "Webull не поддерживает загрузку исторических данных. Выберите другой провайдер (Alpha Vantage, Finnhub, Twelve Data или Polygon) в настройках."}
 	case "robinhood":
-		return c.robinhoodHistory(symbol, startTs, endTs)
+		return c.robinhoodHistory(symbol, startTs, endTs, adjustment)
 	default:
 		return Historical{}, &HTTPError{400, "Unknown provider"}
 	}
@@ -537,14 +537,20 @@ func (c *Client) twelveHistory(symbol string, startTs, endTs int64) (Historical,
 	return Historical{Rows: rows}, nil
 }
 
-func (c *Client) polygonHistory(symbol string, startTs, endTs int64) (Historical, error) {
+// splitAdjusted: вызывающий хранит цены сырыми и сам применяет сплиты, поэтому
+// провайдер обязан отдать ту базу, что просили. Polygon и Robinhood
+// по умолчанию корректируют сплиты, и «none» превращался в пересчитанный ряд,
+// который затем делился ещё раз (AUD-153).
+func splitAdjusted(adjustment string) bool { return adjustment == "split_only" }
+
+func (c *Client) polygonHistory(symbol string, startTs, endTs int64, adjustment string) (Historical, error) {
 	if c.PolygonKey == "" {
 		return Historical{}, &HTTPError{400, "Polygon API key not configured"}
 	}
 	from := time.Unix(startTs, 0).UTC().Format("2006-01-02")
 	to := time.Unix(endTs, 0).UTC().Format("2006-01-02")
-	u := fmt.Sprintf("%s/v2/aggs/ticker/%s/range/1/day/%s/%s?adjusted=true&sort=asc&limit=50000&apikey=%s",
-		c.PolygonBase, url.PathEscape(symbol), from, to, url.QueryEscape(c.PolygonKey))
+	u := fmt.Sprintf("%s/v2/aggs/ticker/%s/range/1/day/%s/%s?adjusted=%t&sort=asc&limit=50000&apikey=%s",
+		c.PolygonBase, url.PathEscape(symbol), from, to, splitAdjusted(adjustment), url.QueryEscape(c.PolygonKey))
 	status, body, err := c.get(u)
 	if err != nil {
 		return Historical{}, err

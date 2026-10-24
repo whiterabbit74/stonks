@@ -11,14 +11,18 @@ import (
 	"mktorder.com/go/internal/types"
 )
 
-func (c *Client) robinhoodHistory(symbol string, startTs, endTs int64) (Historical, error) {
+func (c *Client) robinhoodHistory(symbol string, startTs, endTs int64, adjustment string) (Historical, error) {
 	if c.Robinhood == nil {
 		return Historical{}, &HTTPError{400, "Robinhood is not connected"}
 	}
 	start := time.Unix(startTs, 0).UTC().Format("2006-01-02T00:00:00Z")
+	adjType := "none"
+	if splitAdjusted(adjustment) {
+		adjType = "split"
+	}
 	raw, err := c.Robinhood.CallTool("get_equity_historicals", map[string]any{
 		"symbols": []string{symbol}, "start_time": start, "interval": "day",
-		"bounds": "regular", "adjustment_type": "split",
+		"bounds": "regular", "adjustment_type": adjType,
 	})
 	if err != nil {
 		return Historical{}, robinhoodProviderErr(err)
