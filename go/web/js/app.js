@@ -4697,6 +4697,8 @@
       const optionPayload = {
         tickers: calcTickerRefs(names), trades: stock.trades,
         config: {
+          // Тот же капитал, что у прогона акций: без него сервер брал 10000 (AUD-156).
+          initialCapital: initialCapital(),
           strikePct: Number(fd.get('strike') || 10),
           volAdjPct: Number(fd.get('vol') || 20),
           capitalPct: Number(fd.get('cap') || 10),
