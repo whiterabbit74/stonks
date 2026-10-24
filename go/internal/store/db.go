@@ -833,8 +833,8 @@ func (d *DB) ReplaceSplits(symbol string, events []types.SplitEvent) error {
 		return err
 	}
 	defer tx.Rollback()
-	// Rewriting the list must not silently unmark events the prices already
-	// carry: an event kept as it was stays applied, a changed one is pending.
+	// Событие, уже применённое к ценам, остаётся применённым: при новом
+	// коэффициенте цены переводятся на него, при удалении — восстанавливаются.
 	prev, err := appliedFactors(tx, ticker)
 	if err != nil {
 		return err
@@ -843,15 +843,38 @@ func (d *DB) ReplaceSplits(symbol string, events []types.SplitEvent) error {
 		return err
 	}
 	for _, e := range events {
+		date := tradingdate.DateKey(e.Date)
 		applied := 0
-		if f, ok := prev[e.Date]; ok && f == e.Factor {
+		if f, ok := prev[date]; ok {
+			if err := rebaseApplied(tx, ticker, date, f, e.Factor); err != nil {
+				return err
+			}
 			applied = 1
+			delete(prev, date)
 		}
 		if _, err := tx.Exec(`INSERT INTO splits (ticker, date, factor, applied) VALUES (?, ?, ?, ?)`, ticker, e.Date, e.Factor, applied); err != nil {
 			return err
 		}
 	}
+	for date, f := range prev {
+		if err := rebaseApplied(tx, ticker, date, f, 1); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
+}
+
+// rebaseApplied переводит цены до date с уже применённого коэффициента from
+// на to (to = 1 снимает сплит). Раньше правка применённого события сбрасывала
+// отметку, и новый коэффициент делил уже поделённые цены ещё раз (AUD-146).
+func rebaseApplied(tx *sql.Tx, ticker, date string, from, to float64) error {
+	if from == to || !(from > 0) || !(to > 0) {
+		return nil
+	}
+	_, err := tx.Exec(`UPDATE ohlc SET open = open*?1, high = high*?1, low = low*?1, close = close*?1,
+            adj_close = adj_close*?1, volume = CAST(ROUND(volume/?1) AS INTEGER)
+        WHERE ticker = ?2 AND date < ?3`, from/to, ticker, date)
+	return err
 }
 
 // appliedFactors maps the dates already reflected in the stored prices to the
@@ -907,11 +930,23 @@ func (d *DB) UpsertSplits(symbol string, events []types.SplitEvent) error {
 		return err
 	}
 	defer tx.Rollback()
+	prev, err := appliedFactors(tx, ticker)
+	if err != nil {
+		return err
+	}
 	for _, e := range events {
-		// A re-sent event keeps its mark; a changed factor is a new correction.
-		if _, err := tx.Exec(`INSERT INTO splits (ticker, date, factor, applied) VALUES (?, ?, ?, 0)
-            ON CONFLICT(ticker, date) DO UPDATE SET factor=excluded.factor,
-            applied=CASE WHEN splits.factor = excluded.factor THEN splits.applied ELSE 0 END`, ticker, e.Date, e.Factor); err != nil {
+		// Применённое событие остаётся применённым: цены переводятся на новый
+		// коэффициент (AUD-146). Ожидающее просто меняет коэффициент.
+		date := tradingdate.DateKey(e.Date)
+		applied := 0
+		if f, ok := prev[date]; ok {
+			if err := rebaseApplied(tx, ticker, date, f, e.Factor); err != nil {
+				return err
+			}
+			applied = 1
+		}
+		if _, err := tx.Exec(`INSERT INTO splits (ticker, date, factor, applied) VALUES (?, ?, ?, ?)
+            ON CONFLICT(ticker, date) DO UPDATE SET factor=excluded.factor, applied=excluded.applied`, ticker, e.Date, e.Factor, applied); err != nil {
 			return err
 		}
 	}
@@ -919,8 +954,26 @@ func (d *DB) UpsertSplits(symbol string, events []types.SplitEvent) error {
 }
 
 func (d *DB) DeleteSplit(symbol, date string) error {
-	_, err := d.SQL.Exec(`DELETE FROM splits WHERE ticker = ? AND date = ?`, SafeTicker(symbol), date)
-	return err
+	ticker := SafeTicker(symbol)
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	prev, err := appliedFactors(tx, ticker)
+	if err != nil {
+		return err
+	}
+	// Удаление применённого события возвращает цены к виду без него (AUD-146).
+	if f, ok := prev[tradingdate.DateKey(date)]; ok {
+		if err := rebaseApplied(tx, ticker, tradingdate.DateKey(date), f, 1); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`DELETE FROM splits WHERE ticker = ? AND date = ?`, ticker, date); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (d *DB) DeleteSplits(symbol string) error {

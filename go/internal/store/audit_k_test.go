@@ -47,7 +47,7 @@ func TestTakeRobinhoodPendingRejectsUnparseableCreated(t *testing.T) {
 
 // Rewriting or re-sending the split list must not turn events the prices
 // already carry back into pending ones — that would back-adjust them twice.
-// A changed factor is a different correction and does become pending.
+// A changed factor rebases the prices and stays applied (AUD-146).
 func TestSplitListRewriteKeepsTheAppliedMark(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
@@ -76,14 +76,14 @@ func TestSplitListRewriteKeepsTheAppliedMark(t *testing.T) {
 		t.Fatalf("pending after rewrite = %v, want only the new event", pending)
 	}
 
-	// A corrected factor is a correction the prices do not carry.
+	// A corrected factor is rebased into the prices, not left pending.
 	if err := db.UpsertSplits("AAPL", []types.SplitEvent{{Date: "2024-01-04", Factor: 3}}); err != nil {
 		t.Fatal(err)
 	}
 	if pending, err = db.ListPendingSplits("AAPL"); err != nil {
 		t.Fatal(err)
 	}
-	if len(pending) != 2 {
-		t.Fatalf("pending after factor change = %v, want both events", pending)
+	if len(pending) != 1 || pending[0].Date != "2024-06-10" {
+		t.Fatalf("pending after factor change = %v, want only the new event", pending)
 	}
 }
