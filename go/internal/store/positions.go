@@ -846,9 +846,11 @@ func (d *DB) AttachEntry(f EntryFill) (*Position, error) {
 	// Keyed off the open row, a replay arriving after that row was closed found
 	// nothing, and the old fill was written over the closed row or into the
 	// next entry (AUD-169).
-	newly, err := claimFillTx(tx, f.OrderID, f.Qty)
-	if err != nil {
-		return nil, err
+	newly := f.Qty // no order id, nothing to claim against
+	if strings.TrimSpace(f.OrderID) != "" {
+		if newly, err = claimFillTx(tx, f.OrderID, f.Qty); err != nil {
+			return nil, err
+		}
 	}
 	sameOrder := leg.EntryOrderID == f.OrderID
 	if sameOrder && newly >= f.Qty-1e-9 {

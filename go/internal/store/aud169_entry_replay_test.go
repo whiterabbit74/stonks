@@ -132,3 +132,16 @@ func TestLegacyEntryReplayBooksNothing(t *testing.T) {
 		t.Fatalf("recorded_qty = %v, want 3", got)
 	}
 }
+
+// A fill without an order id has no claim to key off; it is still booked,
+// as before claims, rather than dropped as "already recorded".
+func TestEntryWithoutOrderIDIsBooked(t *testing.T) {
+	db := openTestDB(t)
+	if _, err := db.AttachEntry(EntryFill{Symbol: "AAPL", Broker: "webull", Qty: 2, Price: Ptr(10.0), EntryDate: "2026-09-01"}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := db.OpenPositionBySymbol("AAPL")
+	if err != nil || p == nil || p.Webull.Qty != 2 {
+		t.Fatalf("fill without an order id lost: %+v %v", p, err)
+	}
+}
