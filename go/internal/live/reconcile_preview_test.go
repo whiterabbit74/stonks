@@ -37,3 +37,18 @@ func TestConsistencyUsesEngineClock(t *testing.T) {
 		t.Fatalf("fetchedAt %q must come from e.now()", got)
 	}
 }
+
+// AUD-183: Consistency said ok=false with journal_unavailable, and Reconcile
+// replaced it with "no repair failed" — ok=true next to the error.
+func TestReconcileKeepsUnresolvedIssueNotOK(t *testing.T) {
+	_, e, _ := testEngine(t, nil)
+	if _, err := e.DB.SQL.Exec(`DROP TABLE positions`); err != nil {
+		t.Fatal(err)
+	}
+	for _, apply := range []bool{false, true} {
+		res := e.Reconcile(apply)
+		if res["ok"] != false {
+			t.Fatalf("apply=%v: ok=%v with issues %v", apply, res["ok"], res["issues"])
+		}
+	}
+}

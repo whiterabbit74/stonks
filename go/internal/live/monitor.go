@@ -230,7 +230,10 @@ func (e *Engine) Reconcile(apply bool) map[string]any {
 	after["appliedActions"] = appliedActions
 	after["failedActions"] = failedActions
 	after["applied"] = len(appliedActions) > 0
-	after["ok"] = len(failedActions) == 0
+	// ok is the state after reconciling, not only "no repair failed": an
+	// unreadable journal or an issue nothing here repairs is still not ok
+	// (AUD-183).
+	after["ok"] = after["ok"] == true && len(failedActions) == 0
 	after["mode"] = "preview"
 	if apply {
 		after["mode"] = "apply"
