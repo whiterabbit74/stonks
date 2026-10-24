@@ -542,6 +542,10 @@ func TestMutationToastsFollowSuccessfulResponse(t *testing.T) {
 	if toast < 0 || toast > 500 {
 		t.Fatal("toast «Сохранено» must follow a successful saveSettings response")
 	}
+	auto := strings.Index(a, "await API.saveAutoConfig(updates)")
+	if auto < 0 || auto > save || !strings.Contains(a[auto:save], "return;") {
+		t.Fatal("a failed saveAutoConfig must end the submit before saveSettings reports «Сохранено» (AUD-171)")
+	}
 	patch := strings.Index(a, "await API.patchPosition")
 	if patch < 0 {
 		t.Fatal("journal edit must await patchPosition")

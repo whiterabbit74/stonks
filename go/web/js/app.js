@@ -4526,7 +4526,14 @@
           try {
             const saved = await API.saveAutoConfig(updates);
             state.autoConfig = { ...(state.autoConfig || {}), ...(saved && saved.config ? saved.config : updates) };
-          } catch (err) { toast(err.message); }
+          } catch (err) {
+            // Отказ автоторговли — конец сохранения: следующий успешный запрос
+            // настроек писал «Сохранено» над несохранённым переключателем (AUD-171).
+            const msg = document.getElementById('set-msg');
+            if (msg) msg.textContent = errText(err);
+            toast(errText(err));
+            return;
+          }
         }
         const body = {};
         const settingsKeys = ['watchThresholdPct', 'indicatorPanePercent', 'defaultMultiTickerSymbols',
