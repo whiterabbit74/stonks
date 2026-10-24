@@ -69,3 +69,34 @@ func TestAppliedSplitEditRebasesPrices(t *testing.T) {
 		t.Fatalf("delete: volume %v, want raw 100", v)
 	}
 }
+
+// AUD-152: a raw refresh overlap before an applied split overwrote the
+// adjusted bars with raw ones while the event stayed applied.
+func TestMergeOHLCKeepsAppliedSplitBase(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	raw := []types.OHLC{
+		{Date: "2026-01-01", Open: 120, High: 120, Low: 120, Close: 120, Volume: 100},
+		{Date: "2026-01-02", Open: 60, High: 60, Low: 60, Close: 60, Volume: 100},
+	}
+	if err := db.SaveDataset("X", "X", "", "", raw, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ReplaceSplits("X", []types.SplitEvent{{Date: "2026-01-02", Factor: 2}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ApplyPendingSplits("X"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.MergeOHLC("X", raw); err != nil {
+		t.Fatal(err)
+	}
+	ds, _ := db.GetDataset("X")
+	bars := ds["data"].([]types.OHLC)
+	if bars[0].Close != 60 || bars[1].Close != 60 {
+		t.Fatalf("merged raw overlap broke the adjusted base: %+v", bars)
+	}
+}

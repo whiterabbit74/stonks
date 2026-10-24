@@ -8,10 +8,15 @@ import (
 	"strings"
 	"time"
 
+	"mktorder.com/go/internal/splits"
 	"mktorder.com/go/internal/tradingdate"
 	"mktorder.com/go/internal/types"
 )
 
+// MergeOHLC вливает сырые бары провайдера в сохранённый ряд. Сплиты, уже
+// применённые к ряду, применяются и к входящим барам: иначе перекрытие
+// refresh/актуализации до недавнего сплита ложилось сырым поверх
+// пересчитанного, а событие оставалось applied (AUD-152).
 func (d *DB) MergeOHLC(ticker string, incoming []types.OHLC) error {
 	ticker = SafeTicker(ticker)
 	if ticker == "" {
@@ -32,6 +37,17 @@ func (d *DB) MergeOHLC(ticker string, incoming []types.OHLC) error {
 		return err
 	}
 	defer tx.Rollback()
+	applied, err := appliedFactors(tx, ticker)
+	if err != nil {
+		return err
+	}
+	if len(applied) > 0 {
+		events := make([]types.SplitEvent, 0, len(applied))
+		for date, f := range applied {
+			events = append(events, types.SplitEvent{Date: date, Factor: f})
+		}
+		incoming = splits.AdjustOHLC(incoming, events)
+	}
 	stmt, err := tx.Prepare(`INSERT INTO ohlc (ticker, date, open, high, low, close, adj_close, volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(ticker, date) DO UPDATE SET open=excluded.open, high=excluded.high, low=excluded.low, close=excluded.close, adj_close=excluded.adj_close, volume=excluded.volume`)
 	if err != nil {
