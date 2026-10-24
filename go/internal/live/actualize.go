@@ -10,6 +10,7 @@ import (
 
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/tradingdate"
+	"mktorder.com/go/internal/types"
 )
 
 const actualizeMaxAttemptsPerDay = 3
@@ -151,6 +152,14 @@ func (e *Engine) Actualize(force bool) ActualizeResult {
 			out.Failed = append(out.Failed, sym)
 			continue
 		}
+		if !force && !hasBarFor(hist.Rows, today) {
+			// The automatic run is the after-close one of a session day. The
+			// window overlaps a week, so an answer ending yesterday is not
+			// empty, and counting it closed the day without today's bar
+			// (AUD-174): the ticker stays failed for the next attempt.
+			out.Failed = append(out.Failed, sym)
+			continue
+		}
 		out.Tickers = append(out.Tickers, sym)
 	}
 	out.Count = len(out.Tickers)
@@ -163,6 +172,15 @@ func (e *Engine) Actualize(force bool) ActualizeResult {
 		recordActualizeAttempt(e, today, out)
 	}
 	return out
+}
+
+func hasBarFor(rows []types.OHLC, date string) bool {
+	for _, b := range rows {
+		if tradingdate.DateKey(string(b.Date)) == date {
+			return true
+		}
+	}
+	return false
 }
 
 func actualizeAttemptsToday(settings map[string]any, today string) int {

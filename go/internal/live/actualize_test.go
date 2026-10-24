@@ -97,3 +97,33 @@ func TestActualizePartialFailureKeepsRetrying(t *testing.T) {
 		t.Fatalf("next tick must retry the failed ticker, got %+v", second)
 	}
 }
+
+// AUD-174: after the close the provider still answered with history ending
+// yesterday. Any non-empty answer counted as updated, the day was closed and
+// today's bar never came in.
+func TestActualizeWithoutTodaysBarKeepsRetrying(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-08-31", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	db, e, _ := testEngine(t, bars) // today is 2026-09-01
+	e.Sleep = func(time.Duration) {}
+	st := db.Settings()
+	st["enablePostClosePriceActualization"] = true
+	_ = db.SaveSettings(st)
+
+	res := e.Actualize(false)
+	if res.Count != 0 || len(res.Failed) != 1 {
+		t.Fatalf("stale answer counted as updated: %+v", res)
+	}
+	if fmt.Sprint(db.Settings()["lastActualizationDate"]) == "2026-09-01" {
+		t.Fatal("day closed without today's bar")
+	}
+	e.Quotes = &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": {
+		{Date: "2026-08-31", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1},
+		{Date: "2026-09-01", Open: 9, High: 11, Low: 8, Close: 10, Volume: 1},
+	}}}
+	if res := e.Actualize(false); res.Count != 1 || len(res.Failed) != 0 {
+		t.Fatalf("retry with today's bar: %+v", res)
+	}
+	if fmt.Sprint(db.Settings()["lastActualizationDate"]) != "2026-09-01" {
+		t.Fatal("day with today's bar not closed")
+	}
+}
