@@ -104,7 +104,13 @@ func (e *Engine) evalEMAAlert(a map[string]any, providerChain []string, today st
 	for _, b := range bars {
 		closes = append(closes, b.Close)
 	}
-	closes = append(closes, price)
+	// Бар сегодняшней сессии уже в истории (refresh внутри дня): его close
+	// заменяется текущей ценой, а не учитывается рядом с ней второй раз (AUD-160).
+	if tradingdate.DateKey(bars[len(bars)-1].Date) >= today {
+		closes[len(closes)-1] = price
+	} else {
+		closes = append(closes, price)
+	}
 	series, err := indicators.EMA(closes, ev.EmaPeriod)
 	if err != nil || len(series) == 0 {
 		return ev
