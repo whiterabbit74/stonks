@@ -18,8 +18,10 @@ check_containers() {
     local all_healthy=true
     for container in "${containers[@]}"; do
         if docker ps --format "{{.Names}}" | grep -q "^${container}$"; then
-            status=$(docker ps --format "{{.Status}}" --filter "name=${container}")
-            if [[ $status == *"healthy"* ]] || [[ $status == *"Up"* ]]; then
+            # Статус healthcheck отдельным полем: строка «Up (unhealthy)» содержит
+            # и «Up», и «healthy» (AUD-167). Без healthcheck — состояние контейнера.
+            status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null)
+            if [[ $status == "healthy" ]] || [[ $status == "running" ]]; then
                 log_success "$container: $status"
             else
                 log_warning "$container: $status"
@@ -36,6 +38,7 @@ check_containers() {
 check_api() {
     log_info "Проверяю API endpoints..."
     local endpoints=(
+        "http://localhost:3001/readyz"
         "http://localhost:3001/api/status"
         "http://localhost:3001/api/splits"
         "https://mktorder.com/api/status"
