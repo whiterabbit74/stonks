@@ -39,6 +39,14 @@ Go trading-strategy backtester with a vanilla JS SPA (`go/web`). Historical OHLC
 Читай его перед любой правкой в `go/internal/live`, `go/internal/ibs` или
 `go/internal/scheduler`. Расхождение кода с ним — баг кода. Ниже — краткая выжимка.
 
+- **Мониторинг и автоторговля — два слоя.** Мониторинг — стратегия на бумаге: на T-1 сам
+  решает выход и вход по списку наблюдения и своей позиции и пишет их в журнал. Книги
+  брокеров, их заявки и здоровье, общий переключатель и флаги автоторговли на него не
+  влияют. Автоторговля работает только при включённом общем переключателе
+  (`autoTrading.enabled`) и только следует сигналу мониторинга этого цикла: выход
+  мониторинга продаёт у брокера **всё** (тикер позиции и любые остатки), вход покупается
+  только в **пустой** счёт. Остаток без выхода мониторинга — вход у этого брокера
+  пропускается. Выключена — ни одной заявки. Остатки у брокеров — справка, не позиция.
 - Execute trades **only at the official session close**.
 - **Eleven minutes before the close (T-11)** send the overview: the current IBS readings for all
   monitored tickers and the ticker that would be picked if the session ended now. This stage is
@@ -48,9 +56,10 @@ Go trading-strategy backtester with a vanilla JS SPA (`go/web`). Historical OHLC
   same T-1 cycle.
 - At the close select the instrument with the **lowest IBS strictly below the entry threshold** (`lowIBS`, default `0.10` = 10%) from the monitoring list; if no ticker meets the threshold, skip the trade.
 - **Hold the position until it is fully closed**, then you may re-enter later the same day provided the above conditions are met again.
-- **Журнал сделок — часть ядра.** Одна строка на позицию в `positions`, нога каждого
-  брокера рядом; запись выхода (цена исполнения, дата, PnL, обнуление ноги) обязательна и
-  идемпотентна. Требования — инварианты I–L в `docs/CORE_TRADING_LOGIC.md`.
+- **Журнал сделок — часть ядра.** Одна строка на позицию мониторинга в `positions`:
+  открывает и закрывает её сигнал мониторинга (цены и IBS чтения T-1, PnL по ним), нога
+  каждого брокера рядом — факт исполнения, идемпотентно. Требования — инварианты I–L в
+  `docs/CORE_TRADING_LOGIC.md`.
 - **Thresholds are strict on both sides:** entry `ibs < lowIBS`, exit `ibs > highIBS`, exactly as the backtest does it. An IBS of exactly `0.10` is not an entry. Monitor and autotrader must go through `ibs.IsEntrySignal` / `ibs.IsExitSignal` in `go/internal/ibs` so the live thresholds cannot drift away from the backtest.
 
 ### Core Invariants (do not violate)
