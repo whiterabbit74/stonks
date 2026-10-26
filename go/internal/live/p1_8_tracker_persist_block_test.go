@@ -2,6 +2,7 @@ package live
 
 import (
 	"fmt"
+	"mktorder.com/go/internal/store"
 	"strings"
 	"testing"
 	"time"
@@ -158,7 +159,19 @@ func TestTrackerPersistBlockSurvivesRestartAndOnlyClearsExplicitly(t *testing.T)
 		t.Fatal("a failed SaveOrderTracker must set the trackerPersistFail block")
 	}
 
+	// The monitoring exits by hand before each next attempt, so every cycle
+	// carries a fresh entry for autotrade to follow.
+	reenter := func(e *Engine) {
+		t.Helper()
+		if p, err := e.openPosition(); err != nil || p == nil {
+			t.Fatalf("the monitoring must hold its entry: %+v %v", p, err)
+		} else if _, err := db.ClosePosition(p.ID, store.PositionExit{Date: "2026-09-01", Price: 8.2}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	// A second attempt must be refused - the whole point of the guard.
+	reenter(e)
 	res2 := e.Execute("t1")
 	if res2.Executed {
 		t.Fatal("tracker_persist_failed must block further entries")
@@ -218,6 +231,7 @@ func TestTrackerPersistBlockSurvivesRestartAndOnlyClearsExplicitly(t *testing.T)
 	}
 
 	// A third Execute now goes through again.
+	reenter(e2)
 	res3 := e2.Execute("t1")
 	if !res3.Executed {
 		t.Fatalf("entries must resume once the block is cleared: %+v", res3.Broker)

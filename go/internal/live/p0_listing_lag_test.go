@@ -129,9 +129,10 @@ func TestListingLagBudgetMarksExecutionUnknown(t *testing.T) {
 	if st != "execution_unknown" {
 		t.Fatalf("status %q want execution_unknown", st)
 	}
+	// The monitoring's row stands since the signal; no fill reached its leg.
 	trades, _ := db.ListPositions()
-	if len(trades) != 0 {
-		t.Fatalf("execution_unknown must not delete/create journal %+v", trades)
+	if len(trades) != 1 || trades[0].Webull.Executed() {
+		t.Fatalf("execution_unknown must not delete/create a leg %+v", trades)
 	}
 	row, err := db.AnyPendingTrackerFor("webull")
 	if err != nil {
@@ -231,9 +232,10 @@ func TestExpireStaleTrackersMarksUnresolvedAfterStaleDay(t *testing.T) {
 	if row == nil {
 		t.Fatal("unresolved must still block a new entry")
 	}
+	// The monitoring's row stands since the signal; no fill reached its leg.
 	trades, _ := db.ListPositions()
-	if len(trades) != 0 {
-		t.Fatalf("unresolved must not fabricate a journal row %+v", trades)
+	if len(trades) != 1 || trades[0].Webull.Executed() {
+		t.Fatalf("unresolved must not fabricate a leg %+v", trades)
 	}
 	// Only an explicit operator action lifts it.
 	if _, err := e.ResolveTracker(oid, "absent", "checked with broker support", 0, 0); err != nil {

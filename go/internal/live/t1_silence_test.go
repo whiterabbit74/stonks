@@ -35,42 +35,14 @@ func TestHeldSymbolsRetriesTransientPositionsFailure(t *testing.T) {
 	e.Sleep = func(time.Duration) {}
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 
-	ev := e.Evaluate()
-	if action, _ := ev.Decision["action"].(string); action != "entry" {
-		t.Fatalf("a transient positions read must not cost the entry: %+v", ev.Decision)
+	if res := e.Execute("telegram_t1"); !res.Executed || len(br.Orders) != 1 {
+		t.Fatalf("a transient positions read must not cost the entry: %+v %+v", res.Runs, br.Orders)
 	}
 }
 
-func TestT1NoActionLinesExplainTheReason(t *testing.T) {
-	rows := []t1Watch{{sym: "MSFT", eval: watchEval{ok: true, entry: true, ibs: 0.06}}}
-	exitRes := EvalResult{BrokerDecisions: map[string]map[string]any{
-		"webull": {"action": "none", "reason": "broker_positions_unavailable"},
-	}}
-	lines := strings.Join(t1NoActionLines(exitRes, EvalResult{}, rows), "\n")
-	if strings.Contains(lines, "Действий нет") {
-		t.Fatalf("a skipped decision must not read as no-action:\n%s", lines)
-	}
-	if !strings.Contains(lines, "Webull: позиции брокера не читаются") {
-		t.Fatalf("want the broker reason:\n%s", lines)
-	}
-	if !strings.Contains(lines, "Сигнал входа был: MSFT (IBS 6.0%)") {
-		t.Fatalf("want the unexecuted entry signal:\n%s", lines)
-	}
-}
-
-func TestT1NoActionLinesNameTheForeignPosition(t *testing.T) {
-	exitRes := EvalResult{Decision: map[string]any{
-		"action": "none", "reason": "broker_position_mismatch", "symbol": "AAL",
-	}}
-	lines := strings.Join(t1NoActionLines(exitRes, EvalResult{}, nil), "\n")
-	if !strings.Contains(lines, "AAL") || !strings.Contains(lines, "вход заблокирован") {
-		t.Fatalf("want the blocking position named:\n%s", lines)
-	}
-}
-
-// The T-11 warning line read "monitor OPEN · broker OPEN" whatever the books
-// said: a nil map[string]any stored in an interface is not == nil.
-func TestConsistencyIssueLineReportsFlatBooks(t *testing.T) {
+// T-11 lists what the brokers hold as plain information — not a warning and
+// not "the journal does not know it": a leftover is not the monitoring's.
+func TestT11ListsBrokerHoldingsAsInformation(t *testing.T) {
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "t.db"))
 	if err != nil {
@@ -79,48 +51,27 @@ func TestConsistencyIssueLineReportsFlatBooks(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	e := New(db, &MemoryQuotes{})
 	e.Broker = &MemoryBroker{Pos: []any{map[string]any{"symbol": "AAL", "quantity": 1.0}}}
-	snap := e.Consistency()
-	issues, _ := snap["issues"].([]map[string]any)
-	if len(issues) != 1 {
-		t.Fatalf("want the foreign position flagged once: %+v", issues)
-	}
-	line := formatConsistencyIssueLine(issues[0], snap)
-	if !strings.Contains(line, "AAL") || !strings.Contains(line, "в журнале такой позиции нет") {
-		t.Fatalf("the line must name the ticker and say what is wrong: %s", line)
+	line := e.brokerHoldingsLine()
+	if !strings.Contains(line, "Webull — AAL 1") || strings.Contains(line, "⚠️") || strings.Contains(line, "журнал") {
+		t.Fatalf("want a neutral holdings line: %s", line)
 	}
 }
 
-// executeAll can skip every broker (no token, disabled, unreadable journal)
-// while ev.Decision still carries the showcase entry. The T-1 report used to
-// print "Открываем AAPL" with no outcome line under it, which reads as a
-// filled order.
+// Every broker can be skipped (no token, disabled, unreadable journal) while
+// the monitoring entered. The report names each broker's reason; a real
+// submission still reads as sent.
 func TestT1TextSaysWhenNothingWasSubmitted(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-	e := New(db, &MemoryQuotes{})
 	res := EvalResult{
-		Decision: map[string]any{"action": "entry", "symbol": "AAPL", "candidate": &LiveQuote{IBS: 0.05}},
-		Quotes:   []LiveQuote{{Symbol: "AAPL", CurrentPrice: 8.2}},
-		Broker:   map[string]any{},
-		BrokerDecisions: map[string]map[string]any{
-			"webull": {"action": "none", "reason": HealthMissing},
-		},
+		AutoTrading: map[string]any{"enabled": true},
+		Monitor:     &MonitorStep{Entry: &LiveQuote{Symbol: "AAPL", IBS: 0.05, CurrentPrice: 8.2}},
+		Runs:        map[string]*BrokerRun{"webull": {Reason: HealthMissing}},
 	}
-	text := e.buildT1Text(1, nil, nil, false, false, res, EvalResult{}, nil)
-	if !strings.Contains(text, "заявка не отправлена") {
-		t.Fatalf("an unsubmitted decision must say so:\n%s", text)
-	}
-	if !strings.Contains(text, "Webull: у брокера нет токена") {
+	if text := t1AutoText(res, false); !strings.Contains(text, "Webull: у брокера нет токена") {
 		t.Fatalf("want the per-broker reason:\n%s", text)
 	}
-
-	res.Broker = map[string]any{"webull": map[string]any{"submitted": true, "quantity": 3.0}}
-	text = e.buildT1Text(1, nil, nil, false, false, res, EvalResult{}, nil)
-	if strings.Contains(text, "заявка не отправлена") || !strings.Contains(text, "BUY AAPL MARKET отправлен") {
-		t.Fatalf("a real submission must still report as sent:\n%s", text)
+	res.Runs["webull"] = &BrokerRun{Buy: &OrderResult{Submitted: true, Quantity: 3, Symbol: "AAPL", Side: "BUY"}}
+	if text := t1AutoText(res, false); !strings.Contains(text, "BUY AAPL MARKET отправлен (3 шт.)") {
+		t.Fatalf("a real submission must report as sent:\n%s", text)
 	}
 }
 

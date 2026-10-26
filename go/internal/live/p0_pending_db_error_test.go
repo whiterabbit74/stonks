@@ -61,12 +61,14 @@ func TestPendingTrackerDBErrorBlocksDuplicateEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res2 := e.Execute("t1")
-	if res2.Executed || len(br.Orders) != 1 {
-		t.Fatalf("DB error at entry pending check must not mint a duplicate: executed=%v orders=%d broker=%+v", res2.Executed, len(br.Orders), res2.Broker)
+	// The cycle's preflight would already hold the entry next to the working
+	// order; the submission's own pending check is driven directly here.
+	res2 := e.submitOne(backgroundWindow(), e.Evaluate(), "t1", "c", "webull", br, "entry", "AAPL")
+	if res2.Submitted || len(br.Orders) != 1 {
+		t.Fatalf("DB error at entry pending check must not mint a duplicate: %+v orders=%d", res2, len(br.Orders))
 	}
-	if got := brokerSubmitError(res2.Broker); got != "journal_unavailable" {
-		t.Fatalf("broker error %q want journal_unavailable; decision=%+v broker=%+v", got, res2.Decision, res2.Broker)
+	if res2.Error != "journal_unavailable" {
+		t.Fatalf("broker error %q want journal_unavailable", res2.Error)
 	}
 	if !hasAutotradeLog(t, e, "reason=journal_unavailable") {
 		t.Fatal("want journal_unavailable skip, same family as Evaluate")

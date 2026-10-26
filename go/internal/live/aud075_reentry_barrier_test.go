@@ -36,8 +36,13 @@ func TestReentryDoesNotWaitForPeerExitWait(t *testing.T) {
 	e.AttachBroker("robinhood", rh)
 	wb.SetPos([]any{map[string]any{"symbol": "AAPL", "quantity": 7.0}})
 	rh.SetPos([]any{map[string]any{"symbol": "AAPL", "quantity": 42.0}})
-	mustInsertBrokerTrade(t, e, "wb-aapl", "AAPL", "webull", "2026-08-20", 7)
-	mustInsertBrokerTrade(t, e, "rh-aapl", "AAPL", "robinhood", "2026-08-20", 42)
+	if err := db.SavePosition(store.Position{
+		ID: "aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20", EntryPrice: store.Ptr(10.0), Quantity: 49,
+		Webull:    store.BrokerLeg{Qty: 7, EntryPrice: store.Ptr(10.0), EntryOrderID: "wb-aapl"},
+		Robinhood: store.BrokerLeg{Qty: 42, EntryPrice: store.Ptr(10.0), EntryOrderID: "rh-aapl"},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.10, "highIBS": 0.75, "entryCapitalMode": "cash_100",
 		"allowNewEntries": true, "allowExits": true,
@@ -53,17 +58,10 @@ func TestReentryDoesNotWaitForPeerExitWait(t *testing.T) {
 		_, buy, _ := sidesOf(rh)
 		return buy > 0
 	}
+	// Robinhood's own sell has filled: its leg of the monitoring's row is flat.
 	rhFlat := func() bool {
-		rows, err := db.OpenPositions()
-		if err != nil {
-			return false
-		}
-		for _, p := range rows {
-			if p.Robinhood.Holds() {
-				return false
-			}
-		}
-		return true
+		p, err := db.GetPosition("aapl")
+		return err == nil && p != nil && !p.Robinhood.Holds()
 	}
 	// Заявку Webull опрашивает только его собственное ожидание выхода, и
 	// доходит оно туда уже после того, как Robinhood разнёс свой. Держим это

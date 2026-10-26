@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -170,7 +170,7 @@ func (e *Engine) TokenHealth() string {
 		e.logUnknownExpiry(data)
 	}
 	// P0-4: last_check_status must carry the classified verdict
-	// (OK/NEEDS_REAUTH/...) that CanSubmit/executeAll gate on, not the raw
+	// (OK/NEEDS_REAUTH/...) that CanSubmit and the cycle gate on, not the raw
 	// Webull word — that goes to last_check_raw instead, symmetric with how
 	// Robinhood's health job already stores a classified status.
 	classified, _ := ClassifyWebullHealth(token, status, exp, e.now())
@@ -232,7 +232,7 @@ func (e *Engine) CanSubmit() bool {
 
 // LiveQuote is one ticker's reading in an evaluation cycle: the IBS the
 // decision compares, the thresholds it compares against, and whether the
-// reading is usable at all. decideLiveAction used to walk map[string]any rows,
+// reading is usable at all. the decision used to walk map[string]any rows,
 // where a missing "ibs" key read as 0 — an entry signal — and a mistyped key
 // name was not a compile error. The JSON shape is unchanged: the SPA and the
 // stored last result still see the same keys.
@@ -261,45 +261,35 @@ type EvalResult struct {
 	Submitted   bool            `json:"submitted,omitempty"`
 	Phase       string          `json:"phase,omitempty"`
 	Live        bool            `json:"live"`
-	Broker      any             `json:"broker,omitempty"`
-	// DecisionBroker names the broker whose book Decision was computed on, so
-	// the UI does not read one broker's showcase decision as another's.
-	DecisionBroker string `json:"decisionBroker,omitempty"`
-	// BrokerDecisions holds the per-broker decision (action/reason/candidate),
-	// keyed by broker name. Decision (above) stays the single-book showcase
-	// value Evaluate() computes for UI/Telegram; this is the real per-broker
-	// picture executeAll acted on, so the UI does not show one broker's
-	// decision as if it applied to all of them.
+	// Decision is the monitoring's decision of the moment; Monitor is what the
+	// monitoring actually did in a cycle (written to the journal), and Runs is
+	// what autotrade did at each broker following it. Broker and
+	// BrokerDecisions are the per-broker summary of Runs the SPA reads: the
+	// main order of each broker, and what it did or why it did nothing.
+	Monitor         *MonitorStep              `json:"monitor,omitempty"`
+	Runs            map[string]*BrokerRun     `json:"runs,omitempty"`
+	Broker          any                       `json:"broker,omitempty"`
 	BrokerDecisions map[string]map[string]any `json:"brokerDecisions,omitempty"`
-	// books is the per-broker position read EvaluateWindow already did, handed
-	// to executeAll so it does not read every broker's positions a second time
-	// microseconds later. Webull rate-limits /account/positions to about one
-	// request per two seconds, and the closing minute is where that budget
-	// runs out (AUD-070). Unexported: internal to one execution cycle.
-	books map[string]brokerBook
 }
 
 func (e *Engine) Evaluate() EvalResult {
 	return e.EvaluateWindow(backgroundWindow())
 }
 
+// EvaluateWindow is the monitoring's view of the moment: its watchlist, its own
+// position and the readings, and the decision it would take on them. It asks
+// no broker anything — books, orders, health and the autotrade flags have no
+// say in the monitoring (CORE §3.1).
 func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 	cfg := e.AutoConfig()
 	today := tradingdate.TodayNYSE(e.now())
 	providerChain := quoteProviderChain(cfg)
-	allowExits := anyAllow(cfg, "allowExits")
-	allowEntries := anyAllow(cfg, "allowNewEntries")
 	// One read feeds both the universe and the per-symbol thresholds. An
 	// unreadable watchlist is not an empty one: reporting it as
 	// empty_symbol_universe would hide a broken store behind a normal-looking
 	// "no tickers" day, and would silently swap per-watch thresholds for the
 	// global defaults.
 	watches, watchErr := e.DB.ListWatches()
-	// The showcase book must belong to a broker that is actually attached and
-	// enabled. Hardcoding webull answered for the whole system with one
-	// broker's book: a Robinhood-only setup saw an empty position and an entry
-	// candidate while Robinhood held the trade (AUD-021, the AUD-017 class).
-	showcase, showcaseBr := e.showcaseBroker(cfg)
 	blocked := func(reason string, symbols []string) EvalResult {
 		return EvalResult{
 			EvaluatedAt: e.now().UTC().Format(time.RFC3339Nano),
@@ -308,8 +298,6 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 			Symbols:     symbols,
 			Decision:    map[string]any{"action": "none", "reason": reason, "symbol": nil, "candidate": nil},
 			Live:        e.evalLive(cfg),
-
-			DecisionBroker: showcase,
 		}
 	}
 	if watchErr != nil {
@@ -320,51 +308,15 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 	for _, w := range watches {
 		watchBy[store.SafeTicker(fmt.Sprint(w["symbol"]))] = w
 	}
-	positions, journalErr := e.DB.ListPositions()
+	open, journalErr := e.openPosition()
 	if journalErr != nil {
 		return blocked("journal_unavailable", symbols)
 	}
-	// Одно чтение позиций на брокера за расчёт. Книга витрины и книги всех
-	// брокеров раньше читались двумя отдельными вызовами, то есть у витрины
-	// /account/positions дёргался дважды подряд — а Webull лимитирует этот
-	// эндпоинт примерно одним запросом в две секунды.
-	books := e.heldSymbolsByBrokerBooks(w)
-	bk, ok := books[showcase]
-	if !ok {
-		// Витрины может не быть в снимке брокеров (fallback на defaultBroker) —
-		// тогда её книгу всё-таки нужно прочитать.
-		bk.held, bk.err = e.heldSymbolsOn(showcaseBr, w)
-	}
-	open, held, heldErr := e.booksForHeld(showcase, bk.held, bk.err, positions)
+	// The position's ticker is read even when it left the watchlist: the exit
+	// is always evaluated.
 	quoteSymbols := append([]string{}, symbols...)
-	addQuote := func(sym string) {
-		sym = store.SafeTicker(sym)
-		if sym == "" {
-			return
-		}
-		for _, s := range quoteSymbols {
-			if s == sym {
-				return
-			}
-		}
-		quoteSymbols = append(quoteSymbols, sym)
-	}
-	if open != nil {
-		addQuote(open.Symbol)
-	}
-	for _, row := range positions {
-		if row.Status != "open" {
-			continue
-		}
-		addQuote(row.Symbol)
-	}
-	// Котировки нужны каждому брокеру, а не только витрине: позицию, купленную
-	// руками у второго брокера в неотслеживаемом тикере, иначе нечем оценить —
-	// выход упирается в open_position_quote_unavailable навсегда.
-	for _, one := range books {
-		for sym := range one.held {
-			addQuote(sym)
-		}
+	if open != nil && !slices.Contains(quoteSymbols, open.Symbol) {
+		quoteSymbols = append(quoteSymbols, open.Symbol)
 	}
 	e.prefetchQuotes(quoteSymbols, providerChain, w)
 	var quotes []LiveQuote
@@ -389,10 +341,6 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 			Thresholds:   QuoteThresholds{LowIBS: low, HighIBS: high},
 		})
 	}
-	decision := decideLiveAction(quotes, symbols, held, heldErr, open, allowEntries, allowExits)
-	if reason, _ := decision["reason"].(string); reason == "empty_symbol_universe" {
-		e.logAuto("execution_skipped", "", map[string]any{"symbol": decision["symbol"], "reason": reason})
-	}
 	return EvalResult{
 		EvaluatedAt: e.now().UTC().Format(time.RFC3339Nano),
 		TodayKey:    today,
@@ -400,108 +348,47 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 		Symbols:     symbols,
 		Quotes:      quotes,
 		OpenTrade:   open,
-		Decision:    decision,
+		Decision:    decideMonitor(quotes, symbols, open),
 		Live:        e.evalLive(cfg),
-
-		DecisionBroker: showcase,
-		books:          books,
 	}
 }
 
-// showcaseBroker picks the broker the single-book Decision speaks for: the
-// first enabled one in snapshot order (webull, robinhood, extras), so a
-// multi-broker setup keeps showing webull and a single-broker setup shows
-// itself.
-func (e *Engine) showcaseBroker(cfg map[string]any) (string, Broker) {
-	snaps := e.brokerSnapshot()
-	for _, nb := range snaps {
-		if on, _, _ := brokerFlags(cfg, nb.name); on {
-			return nb.name, nb.br
-		}
-	}
-	if len(snaps) > 0 {
-		return snaps[0].name, snaps[0].br
-	}
-	return "webull", e.defaultBroker()
-}
-
-func decideLiveAction(quotes []LiveQuote, symbols []string, held map[string]float64, heldErr error, open *store.Position, allowEntries, allowExits bool) map[string]any {
+// decideMonitor is the monitoring's decision on one set of readings: exit its
+// position on the exit signal, otherwise — holding nothing — enter the watched
+// ticker with the lowest IBS strictly below its threshold.
+func decideMonitor(quotes []LiveQuote, symbols []string, open *store.Position) map[string]any {
 	none := func(reason string, symbol any, cand any) map[string]any {
 		return map[string]any{"action": "none", "reason": reason, "symbol": symbol, "candidate": cand}
 	}
-	if open != nil && allowExits {
-		sym := open.Symbol
-		// Сигнал считается раньше книги брокера. Проверка «держит ли этот
-		// брокер» стояла первой и возвращалась до чтения IBS, так что по
-		// позиции, которой у брокера нет, решение не принималось вовсе: ни
-		// цены, ни IBS, по которым мы должны были выйти, не оставалось ни в
-		// логе, ни в журнале. Книга решает только, кому отправлять заявку.
-		row := exitSignalQuote(quotes, sym)
-		// A position the broker holds is closed on its exit signal whether or
-		// not the journal knows about it: an unrecorded position is still our
-		// money at risk, and refusing to exit it left it open forever.
-		if heldErr == nil {
-			if _, ok := held[sym]; !ok {
-				// This broker does not hold the ticker: there is nothing
-				// for it to sell. The position belongs to whichever broker
-				// does hold it — a normal state with two brokers, not a
-				// discrepancy anybody has to reconcile.
-				skip := none("position_not_held_here", sym, row)
-				if row != nil && exitSignalFired(row) {
-					skip["signal"] = "ibs_exit"
-				}
-				return skip
-			}
+	if open != nil {
+		row := exitSignalQuote(quotes, open.Symbol)
+		if exitSignalFired(row) {
+			return map[string]any{"action": "exit", "reason": "ibs_exit", "symbol": open.Symbol, "candidate": row}
 		}
-		if row != nil && exitSignalFired(row) {
-			return map[string]any{"action": "exit", "reason": "ibs_exit", "symbol": sym, "candidate": row}
+		if row == nil {
+			return none("open_position_quote_unavailable", open.Symbol, nil)
 		}
-		reason := "open_position_quote_unavailable"
-		if row != nil {
-			reason = "exit_threshold_not_reached"
-		}
-		return none(reason, sym, row)
-	}
-	if open != nil && !allowExits {
-		return none("exits_disabled", open.Symbol, nil)
+		return none("exit_threshold_not_reached", open.Symbol, row)
 	}
 	if len(symbols) == 0 {
 		return none("empty_symbol_universe", nil, nil)
 	}
-	if open == nil && !allowEntries {
-		return none("entries_disabled", nil, nil)
+	watched := map[string]bool{}
+	for _, s := range symbols {
+		watched[store.SafeTicker(s)] = true
 	}
-	if open == nil && allowEntries {
-		if heldErr != nil {
-			return none("broker_positions_unavailable", nil, nil)
+	var best *LiveQuote
+	for i, q := range quotes {
+		if !q.OK || !watched[store.SafeTicker(q.Symbol)] {
+			continue
 		}
-		if len(held) > 0 {
-			return none("broker_position_exists", nil, nil)
+		low, _ := q.resolvedThresholds()
+		if ibs.IsEntrySignal(q.IBS, low) && (best == nil || q.IBS < best.IBS) {
+			best = &quotes[i]
 		}
-		// quotes carries more than the watchlist: EvaluateWindow adds the
-		// symbol of every open broker trade (another broker's included) and of
-		// a live position without a journal row, so they can be priced and
-		// exited. An entry may only be opened in a monitored ticker, so the
-		// candidate loop is restricted to the configured universe.
-		watched := map[string]bool{}
-		for _, s := range symbols {
-			watched[store.SafeTicker(s)] = true
-		}
-		var best *LiveQuote
-		bestIBS := 2.0
-		for i, q := range quotes {
-			if !q.OK || !watched[store.SafeTicker(q.Symbol)] {
-				continue
-			}
-			low, _ := q.resolvedThresholds()
-			if ibs.IsEntrySignal(q.IBS, low) && q.IBS < bestIBS {
-				bestIBS = q.IBS
-				best = &quotes[i]
-			}
-		}
-		if best != nil {
-			return map[string]any{"action": "entry", "reason": "lowest_ibs_signal", "symbol": best.Symbol, "candidate": best}
-		}
+	}
+	if best != nil {
+		return map[string]any{"action": "entry", "reason": "lowest_ibs_signal", "symbol": best.Symbol, "candidate": best}
 	}
 	return none("no_signal", nil, nil)
 }
@@ -535,136 +422,6 @@ func candidateIBS(dec map[string]any) float64 {
 	return 0
 }
 
-// booksForBroker prefers the position read EvaluateWindow already made in this
-// same cycle and only goes to the broker when that read is missing.
-func (e *Engine) booksForBroker(ev EvalResult, name string, br Broker, rows []store.Position, w execWindow) (open *store.Position, held map[string]float64, heldErr error) {
-	if bk, ok := ev.books[name]; ok {
-		return e.booksForHeld(name, bk.held, bk.err, rows)
-	}
-	return e.booksFor(name, br, rows, w)
-}
-
-func (e *Engine) booksFor(name string, br Broker, rows []store.Position, w execWindow) (open *store.Position, held map[string]float64, heldErr error) {
-	held, heldErr = e.heldSymbolsOn(br, w)
-	return e.booksForHeld(name, held, heldErr, rows)
-}
-
-// booksForHeld is booksFor on an already-read book, so a caller that has just
-// read every broker's positions does not read the same broker a second time.
-func (e *Engine) booksForHeld(name string, held map[string]float64, heldErr error, rows []store.Position) (open *store.Position, outHeld map[string]float64, outErr error) {
-	if held == nil && heldErr == nil {
-		held = map[string]float64{}
-	}
-	open = openPositionOf(rows, name)
-	if open == nil && heldErr == nil && len(held) > 0 {
-		// The journal is flat but the broker is not. Exit that position on its
-		// own signal. With several tickers held the pick is the alphabetically
-		// first, so successive runs are deterministic rather than map-random.
-		// ponytail: one position per broker per cycle; a real multi-position
-		// book would need decideLiveAction to return a list.
-		syms := make([]string, 0, len(held))
-		for sym := range held {
-			syms = append(syms, sym)
-		}
-		sort.Strings(syms)
-		today := tradingdate.TodayNYSE(e.now())
-		// What this broker has already sent out as an exit today. A manual
-		// position has no journal row to close, so the closed-row check alone
-		// missed exactly the case that has no other guard (CORE-03).
-		sold, soldErr := e.DB.ExitedTodayQty(name, today)
-		if soldErr != nil {
-			// Unknown history is not "nothing sold": synthesising a position
-			// out of a possibly stale feed is what sends the second SELL.
-			e.logAuto("journal_read_failed", "", map[string]any{
-				"table": "order_trackers", "op": "exited_today", "broker": name, "error": soldErr.Error(),
-			})
-			return nil, held, heldErr
-		}
-		for _, sym := range syms {
-			// A ticker this broker already sold today, in at least the amount
-			// still listed, is the position feed lagging the fill rather than a
-			// live position: /account/positions keeps reporting sold shares for
-			// a second or two. Selling out of that stale row sent a second
-			// MARKET SELL for shares that were already gone (AUD-071).
-			// More shares than we sold means someone really did buy: that is a
-			// live position and it gets its exit.
-			if sold[sym] >= held[sym] && sold[sym] > 0 {
-				continue
-			}
-			if closedTodayFor(rows, name, sym, today) {
-				continue
-			}
-			open = &store.Position{Symbol: sym, Status: "open", Source: "live_broker", Quantity: held[sym]}
-			break
-		}
-	}
-	return open, held, heldErr
-}
-
-// closedTodayFor reports that this broker's journal already closed this symbol
-// today, which is what makes a still-listed broker position stale rather than
-// live.
-func closedTodayFor(rows []store.Position, broker, symbol, today string) bool {
-	for _, p := range rows {
-		if p.Status != "closed" || p.Symbol != symbol {
-			continue
-		}
-		if tradingdate.DateKey(p.ExitDate) != today {
-			continue
-		}
-		if p.Leg(broker).ExitOrderID != "" || p.Leg(broker).ExitPrice != nil {
-			return true
-		}
-	}
-	return false
-}
-
-// openPositionOf returns the open position this broker has a leg in, or nil.
-//
-// Scoped to the broker on purpose. The position row is shared — one row carries
-// both brokers — but the decision is per broker: a broker that is flat may open
-// a new entry while the other one is still holding, and its own book gates that
-// (CORE-01). A journal row nobody has a leg in blocks nothing; if the shares are
-// really there, the broker's own position feed says so and `held` blocks the
-// entry.
-func openPositionOf(rows []store.Position, broker string) *store.Position {
-	for i, p := range rows {
-		if p.Status == "open" && !p.IsHidden && !p.IsTest && p.Leg(broker).Holds() {
-			return &rows[i]
-		}
-	}
-	return nil
-}
-
-// heldSymbolsByBroker reads live positions from every attached broker
-// (BrokerNamed / Brokers), not only defaultBroker.
-func (e *Engine) heldSymbolsByBroker() (map[string]map[string]float64, error) {
-	return e.heldSymbolsByBrokerWindow(backgroundWindow())
-}
-
-// heldSymbolsByBrokerWindow is heldSymbolsByBroker bounded by w, so the T-1
-// path does not read positions without the close-of-session budget.
-func (e *Engine) heldSymbolsByBrokerWindow(w execWindow) (map[string]map[string]float64, error) {
-	books := e.heldSymbolsByBrokerBooks(w)
-	out := map[string]map[string]float64{}
-	var firstErr error
-	// Snapshot order, not map order: "first error" must be the same one every run.
-	for _, nb := range e.brokerSnapshot() {
-		bk, ok := books[nb.name]
-		if !ok {
-			continue
-		}
-		if bk.err != nil {
-			if firstErr == nil {
-				firstErr = bk.err
-			}
-			continue
-		}
-		out[nb.name] = bk.held
-	}
-	return out, firstErr
-}
-
 // brokerBook is one broker's live position read: its book, or why it could not
 // be read.
 type brokerBook struct {
@@ -672,9 +429,8 @@ type brokerBook struct {
 	err  error
 }
 
-// heldSymbolsByBrokerBooks reads every attached broker's positions once and
-// keeps each broker's own read error, so one caller can serve both the
-// per-broker books and the showcase book from a single round of reads.
+// heldSymbolsByBrokerBooks reads every attached broker's positions once, in
+// parallel, and keeps each broker's own read error.
 func (e *Engine) heldSymbolsByBrokerBooks(w execWindow) map[string]brokerBook {
 	out := map[string]brokerBook{}
 	// Параллельно: чтение книги Webull (со своими повторами, таймаутами и
@@ -741,57 +497,12 @@ func (q *LiveQuote) resolvedThresholds() (low, high float64) {
 	return ibs.Pair(q.Thresholds.LowIBS, q.Thresholds.HighIBS)
 }
 
-// Execute evaluates the current signal and submits it, with no T-1
-// close-of-session deadline of its own (manual/API triggers use this path).
-// Use ExecuteWindow directly when a deadline applies.
+// Execute runs one cycle — the monitoring's decision, then autotrade following
+// it — with no close-of-session deadline of its own. Production runs the cycle
+// only at T-1 (Aggregate); this is the same cycle for the paths that drive it
+// directly.
 func (e *Engine) Execute(trigger string) EvalResult {
-	return e.ExecuteCtx(context.Background(), trigger)
-}
-
-// ExecuteCtx is Execute with an externally supplied context (e.g. an HTTP
-// request's) and no additional deadline of its own.
-func (e *Engine) ExecuteCtx(ctx context.Context, trigger string) EvalResult {
-	return e.executeWindow(windowFromCtx(ctx), trigger)
-}
-
-// ExecuteWindow is Execute under a caller-supplied execWindow (ctx + T-1
-// deadline). Only this package builds an execWindow (via t1Window), so it
-// stays unexported; ExecuteCtx/Execute are the public entry points for
-// everyone else.
-func (e *Engine) executeWindow(w execWindow, trigger string) EvalResult {
-	return e.executeWindowFor(w, trigger, nil)
-}
-
-// executeWindowFor is executeWindow restricted to the named brokers. The T-1
-// re-entry pass uses it so it touches only the brokers whose own exit has
-// settled: another broker's unfinished order is not this one's business, and
-// re-reading its books would cost the closing minute for nothing (CORE-01).
-// An empty list means every attached broker.
-func (e *Engine) executeWindowFor(w execWindow, trigger string, only []string) EvalResult {
-	corr := newCorrelationID()
-	ev := e.EvaluateWindow(w)
-	e.mu.Lock()
-	e.lastRunAt = ev.EvaluatedAt
-	e.lastResult = ev
-	e.mu.Unlock()
-	snaps := e.brokerSnapshot()
-	if len(only) > 0 {
-		want := map[string]bool{}
-		for _, name := range only {
-			want[name] = true
-		}
-		picked := make([]namedBroker, 0, len(only))
-		for _, nb := range snaps {
-			if want[nb.name] {
-				picked = append(picked, nb)
-			}
-		}
-		snaps = picked
-	}
-	// Always go through executeAll, including zero and one broker: every broker
-	// has its own flags, health status, and book, and only executeAll checks
-	// them. See P0-1 in AUTOTRADE_ROADMAP.md.
-	return e.executeAll(w, ev, trigger, corr, snaps)
+	return e.runCycle(backgroundWindow(), trigger, false, nil)
 }
 
 func (e *Engine) placeMarketOnce(ctx context.Context, symbol, side string, qty float64, cfg PlaceMarketCfg, br Broker) (OrderResult, error) {

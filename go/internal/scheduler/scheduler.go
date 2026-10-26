@@ -389,7 +389,7 @@ func RunBrokerHealth(db *store.DB, deps Deps, todayET string, now time.Time) []l
 // webullHealthJob runs the daily Webull token check and records the result.
 // P0-4: last_check_status must end up holding the classified verdict
 // (OK/NEEDS_REAUTH/MISSING/UNREACHABLE/EXPIRING_SOON) that CanSubmit and
-// executeAll gate on — the same vocabulary robinhoodHealthJob already writes
+// the cycle gate on — the same vocabulary robinhoodHealthJob already writes
 // — never the raw word Webull's CheckToken response carried ("NORMAL",
 // "PENDING", ...). The raw word is preserved separately in last_check_raw for
 // diagnostics.

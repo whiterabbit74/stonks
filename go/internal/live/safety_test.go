@@ -53,9 +53,13 @@ func TestBrokerPositionBlocksEntry(t *testing.T) {
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true, "allowExits": true,
 	})
-	ev := e.Evaluate()
-	if fmt.Sprint(ev.Decision["action"]) == "entry" {
-		t.Fatalf("must not enter over a live broker position: %+v", ev.Decision)
+	// The monitoring enters; autotrade buys only into an empty account.
+	ev := e.Execute("telegram_t1")
+	if ev.Monitor.Opened == nil {
+		t.Fatalf("the monitoring enters regardless of the broker: %+v", ev.Monitor)
+	}
+	if len(br.Orders) != 0 || ev.Runs["webull"].Reason != "broker_not_flat" {
+		t.Fatalf("must not buy over a live broker position: %+v %+v", ev.Runs["webull"], br.Orders)
 	}
 }
 
@@ -66,9 +70,9 @@ func TestBrokerPositionLookupErrorBlocksEntry(t *testing.T) {
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
 	})
-	ev := e.Evaluate()
-	if fmt.Sprint(ev.Decision["action"]) != "none" || fmt.Sprint(ev.Decision["reason"]) != "broker_positions_unavailable" {
-		t.Fatalf("lookup failure must fail closed: %+v", ev.Decision)
+	ev := e.Execute("telegram_t1")
+	if len(br.Orders) != 0 || ev.Runs["webull"].Reason != "broker_positions_unavailable" {
+		t.Fatalf("lookup failure must fail closed: %+v %+v", ev.Runs["webull"], br.Orders)
 	}
 }
 
@@ -253,7 +257,7 @@ func TestResumePollsBeforeExpiringYesterday(t *testing.T) {
 	}
 }
 
-func TestPartialExitKeepsRemainderOpen(t *testing.T) {
+func TestPartialExitKeepsRemainderInTheLeg(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 11.9, Volume: 1}}
 	db, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
@@ -269,25 +273,14 @@ func TestPartialExitKeepsRemainderOpen(t *testing.T) {
 		"status": "FILLED", "filled_qty": 2.0, "filled_price": 11.5, "client_order_id": oid,
 	})
 	waitTrackerFinal(t, e, db, "AAPL", "exit")
+	// The monitoring closed its row on the signal; the partial sell shrinks
+	// the leg and leaves the unsold part visible (invariant K.3).
 	trades, _ := db.ListPositions()
-	var open, closed *store.Position
-	for i, row := range trades {
-		if row.Status == "open" {
-			open = &trades[i]
-		} else {
-			closed = &trades[i]
-		}
+	if len(trades) != 1 || trades[0].Status != "closed" || pv(trades[0].ExitPrice) != 11.9 {
+		t.Fatalf("one row, closed by the signal at its T-1 price: %+v", trades)
 	}
-	if open == nil || open.Quantity != 3 {
-		t.Fatalf("remainder must stay open with 3 shares: %+v", trades)
-	}
-	// AUD-044: проданная часть — отдельная закрытая сделка с реализованным
-	// PnL, иначе прибыль по этим акциям исчезает из журнала.
-	if closed == nil || closed.Quantity != 2 {
-		t.Fatalf("sold part must be journalled as a closed trade: %+v", trades)
-	}
-	if got := pv(closed.PnLAbsolute); got != 3 {
-		t.Fatalf("realised pnl %v, want 3", got)
+	if leg := trades[0].Webull; leg.Qty != 3 || pv(leg.ExitPrice) != 11.5 || leg.ExitOrderID != oid {
+		t.Fatalf("the leg must keep the 3 unsold shares: %+v", leg)
 	}
 }
 
@@ -307,21 +300,20 @@ func TestProviderAbbrevWebull(t *testing.T) {
 	}
 }
 
-func TestBrokerOnlyPositionIsExitedOnSignal(t *testing.T) {
-	// A position the broker holds without a journal row (bought by hand) is
-	// still our money at risk: it is closed in full on its exit signal.
+func TestMonitorExitSellsTheWholeBook(t *testing.T) {
+	// The monitoring exits AAPL. The broker holds 500 — more than autotrade
+	// ever bought, the rest by hand: the exit clears the account in full.
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 12, Volume: 1}}
-	_, e, br := testEngine(t, bars)
+	db, e, br := testEngine(t, bars)
+	if _, err := db.OpenMonitorPosition(store.Position{ID: "m1", Symbol: "AAPL", EntryDate: "2026-08-28", EntryPrice: store.Ptr(10.0)}); err != nil {
+		t.Fatal(err)
+	}
 	br.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 500.0}}
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "highIBS": 0.75, "allowExits": true, "allowNewEntries": true,
 		"symbols": "AAPL",
 	})
-	ev := e.Evaluate()
-	if got := fmt.Sprint(ev.Decision["action"]); got != "exit" {
-		t.Fatalf("broker-only position must be exited on signal, got %q", got)
-	}
-	res := e.Execute("manual_execute")
+	res := e.Execute("telegram_t1")
 	if !res.Executed || len(br.Orders) != 1 {
 		t.Fatalf("exit must be placed: %+v", br.Orders)
 	}
@@ -381,8 +373,8 @@ func TestForeignOpenOrderIsNotCancelled(t *testing.T) {
 	br.Open = []any{map[string]any{"symbol": "AAPL", "client_order_id": "human-1", "status": "WORKING"}}
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 
-	if res := e.Execute("test"); !res.Executed {
-		t.Fatalf("execute %+v", res)
+	if _, err := e.cancelOpenOrdersBeforeEntry(backgroundWindow(), "AAPL", br); err != nil {
+		t.Fatal(err)
 	}
 	if len(br.Cancelled) != 0 {
 		t.Fatalf("a foreign order was cancelled: %+v", br.Cancelled)

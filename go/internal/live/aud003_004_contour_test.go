@@ -30,9 +30,10 @@ func brokerRows(t *testing.T, db *store.DB, id string) []store.Position {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The monitoring's row has its own id; an order lands in it as a leg.
 	var out []store.Position
 	for _, r := range rows {
-		if r.ID == id {
+		if r.ID == id || r.Webull.EntryOrderID == id || r.Robinhood.EntryOrderID == id {
 			out = append(out, r)
 		}
 	}

@@ -97,45 +97,45 @@ func TestUnheldPositionClosesBySignal(t *testing.T) {
 	if p.PnLAbsolute == nil || *p.PnLAbsolute != 6 {
 		t.Fatalf("PnL считается от цены решения: %v", p.PnLAbsolute)
 	}
-	if p.Webull.Holds() {
-		t.Fatalf("закрытая позиция не держит акций: %+v", p.Webull)
+	// Автоторговля выключена, никто не продавал: нога честно показывает
+	// бумаги у брокера (инвариант K.5).
+	if p.Webull.Qty != 4 {
+		t.Fatalf("нога пишется только исполнением: %+v", p.Webull)
 	}
 }
 
-// Брокер бумагу держит — выход принадлежит его филлу, и сигнал не имеет права
-// закрыть строку раньше: иначе цена исполнения потеряется, а нога останется с
-// акциями при закрытой строке.
-func TestHeldPositionIsNotClosedBySignal(t *testing.T) {
-	db, e, br := signalExitEngine(t)
-	br.Pos = []any{map[string]any{"symbol": "MSFT", "quantity": 4.0}}
-	e.Execute("telegram_t1")
-	if p := openPositionByID(t, db, "p1"); p.Status != "open" {
-		t.Fatalf("позицию, которую держит брокер, закрывает филл, а не сигнал: %+v", p)
+// Мониторинг закрывает свою позицию по своему сигналу, что бы ни творилось у
+// брокеров: бумага в книге, висящая заявка, нечитаемая книга — всё это дело
+// автоторговли, а она выключена (CORE §3.1).
+func TestMonitorExitIgnoresBrokerState(t *testing.T) {
+	cases := map[string]func(db *store.DB, br *MemoryBroker){
+		"бумага в книге": func(_ *store.DB, br *MemoryBroker) {
+			br.Pos = []any{map[string]any{"symbol": "MSFT", "quantity": 4.0}}
+		},
+		"висящая заявка": func(db *store.DB, _ *MemoryBroker) {
+			if err := db.SaveOrderTracker(map[string]any{
+				"clientOrderId": "t1", "symbol": "MSFT", "action": "exit", "status": "submitted",
+				"quantity": 4.0, "broker": "webull", "dateKey": "2026-09-01",
+			}); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"книга не читается": func(_ *store.DB, br *MemoryBroker) {
+			br.FailPositions = fmt.Errorf("positions down")
+		},
 	}
-}
-
-// Незавершённая заявка по тикеру тоже владеет выходом: её филл ещё придёт.
-func TestPendingOrderBlocksSignalClose(t *testing.T) {
-	db, e, _ := signalExitEngine(t)
-	if err := db.SaveOrderTracker(map[string]any{
-		"clientOrderId": "t1", "symbol": "MSFT", "action": "exit", "status": "submitted",
-		"quantity": 4.0, "broker": "webull", "dateKey": "2026-09-01",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	e.Execute("telegram_t1")
-	if p := openPositionByID(t, db, "p1"); p.Status != "open" {
-		t.Fatalf("строку закрывает филл висящей заявки, а не сигнал: %+v", p)
-	}
-}
-
-// Книга брокера не прочиталась — «не держит» из этого не следует.
-func TestUnreadableBookBlocksSignalClose(t *testing.T) {
-	db, e, br := signalExitEngine(t)
-	br.FailPositions = fmt.Errorf("positions down")
-	e.Execute("telegram_t1")
-	if p := openPositionByID(t, db, "p1"); p.Status != "open" {
-		t.Fatalf("закрывать строку по нечитаемой книге нельзя: %+v", p)
+	for name, setup := range cases {
+		t.Run(name, func(t *testing.T) {
+			db, e, br := signalExitEngine(t)
+			setup(db, br)
+			e.Execute("telegram_t1")
+			if p := openPositionByID(t, db, "p1"); p.Status != "closed" || p.ExitPrice == nil || *p.ExitPrice != 11.5 {
+				t.Fatalf("мониторинг выходит по сигналу независимо от брокера: %+v", p)
+			}
+			if len(br.Orders) != 0 {
+				t.Fatalf("автоторговля выключена — заявок нет: %+v", br.Orders)
+			}
+		})
 	}
 }
 
@@ -151,27 +151,5 @@ func TestSignalCloseWaitsForExitThreshold(t *testing.T) {
 	e.Execute("telegram_t1")
 	if p := openPositionByID(t, db, "p1"); p.Status != "open" {
 		t.Fatalf("IBS .25 ниже порога .75 — выхода нет: %+v", p)
-	}
-}
-
-// Цена и IBS сигнала, который не исполнился, должны остаться в решении: по
-// «reason=position_not_held_here» без них не видно, по чему мы должны были
-// выйти.
-func TestSkippedExitKeepsSignalReading(t *testing.T) {
-	open := &store.Position{Status: "open", Symbol: "MSFT"}
-	quotes := []LiveQuote{{
-		Symbol: "MSFT", OK: true, IBS: 0.784, CurrentPrice: 524.7,
-		Thresholds: QuoteThresholds{LowIBS: 0.1, HighIBS: 0.75},
-	}}
-	d := decideLiveAction(quotes, []string{"MSFT"}, map[string]float64{}, nil, open, true, true)
-	if d["action"] != "none" || d["reason"] != "position_not_held_here" {
-		t.Fatalf("продавать у этого брокера нечего: %+v", d)
-	}
-	if d["signal"] != "ibs_exit" {
-		t.Fatalf("сработавший сигнал должен быть назван: %+v", d)
-	}
-	cand, ok := d["candidate"].(*LiveQuote)
-	if !ok || cand == nil || cand.CurrentPrice != 524.7 || candidateIBS(d) != 0.784 {
-		t.Fatalf("цена и IBS решения потерялись: %+v", d)
 	}
 }

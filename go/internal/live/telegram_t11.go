@@ -70,7 +70,7 @@ func (e *Engine) buildT11Text(minutes int, today, provider string, rows []t1Watc
 	}
 
 	// "the ticker that would be picked if the session ended now" — the lowest
-	// IBS strictly below its threshold, the same pick decideLiveAction makes.
+	// IBS strictly below its threshold, the same pick decideMonitor makes.
 	// Still shown while a position is open: T-1 exits and re-enters inside one
 	// cycle, so the candidate is exactly what happens after the exit fills.
 	entryLine := "ENTRY: —"
@@ -89,11 +89,8 @@ func (e *Engine) buildT11Text(minutes int, today, provider string, rows []t1Watc
 	if block := FormatIntegrityWarningBlock(integ); block != "" {
 		parts = append(parts, "", block)
 	}
-	snap := e.Consistency()
-	if issues, ok := snap["issues"].([]map[string]any); ok {
-		for _, issue := range issues {
-			parts = append(parts, formatConsistencyIssueLine(issue, snap))
-		}
+	if line := e.brokerHoldingsLine(); line != "" {
+		parts = append(parts, line)
 	}
 	if len(body) > 0 {
 		parts = append(parts, "")
@@ -105,16 +102,35 @@ func (e *Engine) buildT11Text(minutes int, today, provider string, rows []t1Watc
 	return strings.Join(parts, "\n")
 }
 
-func formatConsistencyIssueLine(issue, snap map[string]any) string {
-	symbol := fmt.Sprint(issue["symbol"])
-	if symbol == "" || symbol == "<nil>" {
-		symbol = "?"
+// brokerHoldingsLine lists what the brokers hold, as plain information: none
+// of it is the monitoring's position and none of it changes a decision. With
+// autotrade on, it is what the monitoring's next exit sells (CORE §3).
+func (e *Engine) brokerHoldingsLine() string {
+	books := e.heldSymbolsByBrokerBooks(backgroundWindow())
+	var parts []string
+	for _, nb := range e.brokerSnapshot() {
+		bk, ok := books[nb.name]
+		if !ok {
+			continue
+		}
+		label := brokerLabel(nb.name)
+		switch {
+		case bk.err != nil:
+			parts = append(parts, label+" — не читается")
+		case len(bk.held) == 0:
+			parts = append(parts, label+" — пусто")
+		default:
+			var items []string
+			for _, sym := range sortedKeys(bk.held) {
+				items = append(items, fmt.Sprintf("%s %v", sym, bk.held[sym]))
+			}
+			parts = append(parts, label+" — "+strings.Join(items, ", "))
+		}
 	}
-	msg := fmt.Sprint(issue["message"])
-	if msg == "" || msg == "<nil>" {
-		msg = fmt.Sprint(issue["code"])
+	if len(parts) == 0 {
+		return ""
 	}
-	return fmt.Sprintf("⚠️ %s: %s", tgBold(symbol), msg)
+	return "💼 У брокеров (справка): " + strings.Join(parts, "; ")
 }
 
 // snap holds map[string]any values: a nil map stored in an interface is not

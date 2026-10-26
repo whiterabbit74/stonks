@@ -61,11 +61,7 @@ func TestTelegramT1IgnoresExecutionWindow(t *testing.T) {
 		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
 		"executionWindowSeconds": 15,
 	})
-	// 15:59 ET is 60s to close, outside a 15s window. Node T-1 still sends the order.
-	manual := e.Execute("manual_execute")
-	if manual.Executed {
-		t.Fatal("manual_execute must still honor the window")
-	}
+	// 15:59 ET is 60s to close, outside a 15s window. T-1 still sends the order.
 	res := e.Execute("telegram_t1")
 	if !res.Executed || len(br.Orders) != 1 {
 		t.Fatalf("telegram_t1 must not use executionWindowSeconds: executed=%v orders=%d %+v", res.Executed, len(br.Orders), res.Broker)
@@ -83,9 +79,10 @@ func TestRejectedOrderDoesNotOpenTrade(t *testing.T) {
 	oid := br.Orders[0].ClientOrderID
 	br.SetDetail(oid, map[string]any{"status": "REJECTED"})
 	waitTrackerFinal(t, e, db, "AAPL", "entry")
+	// The monitoring's position stands; the rejected order adds no leg.
 	trades, _ := db.ListPositions()
-	if len(trades) != 0 {
-		t.Fatalf("rejected must not create trade %+v", trades)
+	if len(trades) != 1 || trades[0].Webull.Executed() {
+		t.Fatalf("rejected must not create a leg %+v", trades)
 	}
 	row, err := db.FindPendingTracker("AAPL", "entry")
 	if err != nil {
@@ -94,10 +91,10 @@ func TestRejectedOrderDoesNotOpenTrade(t *testing.T) {
 	if row != nil {
 		t.Fatal("rejected tracker must be final")
 	}
-	// Evaluate can still enter: no phantom open.
-	ev := e.Evaluate()
-	if fmt.Sprint(ev.Decision["action"]) != "entry" {
-		t.Fatalf("phantom freeze: %+v", ev.Decision)
+	// The failed buy is not caught up: the monitoring holds, autotrade waits
+	// for its next entry (CORE §3.2).
+	if ev := e.Evaluate(); fmt.Sprint(ev.Decision["action"]) == "entry" {
+		t.Fatalf("a held position is no new entry: %+v", ev.Decision)
 	}
 }
 
@@ -111,10 +108,10 @@ func TestFillRecordsBrokerPriceAndQty(t *testing.T) {
 		"status": "FILLED", "avg_price": 8.41, "filled_qty": 1.5,
 	})
 	waitTrackerFinal(t, e, db, "AAPL", "entry")
-	// One row, not the old broker+monitor pair: the fill price and quantity are
-	// recorded once, on the position and on the leg that executed it.
+	// One row: the monitoring's signal price, and the fill on the leg that
+	// executed it.
 	bt, _ := db.ListPositions()
-	if len(bt) != 1 || pv(bt[0].EntryPrice) != 8.41 || bt[0].Quantity != 1.5 {
+	if len(bt) != 1 || pv(bt[0].EntryPrice) != 8.2 || bt[0].Quantity != 1.5 {
 		t.Fatalf("fill %+v", bt)
 	}
 	if pv(bt[0].Webull.EntryPrice) != 8.41 || bt[0].Webull.Qty != 1.5 {
@@ -150,14 +147,15 @@ func TestExitFillWritesPnLBySymbol(t *testing.T) {
 	if !mok || msft.Status != "open" {
 		t.Fatalf("must not close other symbol %+v", msft)
 	}
-	if pv(aapl.ExitPrice) != 12 {
-		t.Fatalf("exitPrice %+v", aapl)
+	// The row closes at the signal's T-1 price; the fill goes to the leg.
+	if pv(aapl.ExitPrice) != 11.9 || pv(aapl.Webull.ExitPrice) != 12 {
+		t.Fatalf("exitPrice %+v / leg %+v", aapl, aapl.Webull)
 	}
-	if pv(aapl.PnLPercent) != 20 {
+	if got := pv(aapl.PnLPercent); got < 18.99 || got > 19.01 {
 		t.Fatalf("pnlPercent %+v", aapl)
 	}
-	// 2 shares x $2 = $4 (AUD-041): P&L is money, on the one row there is.
-	if pv(aapl.PnLAbsolute) != 4 {
+	// 2 shares x $1.90 = $3.80 (AUD-041): P&L is money, on the one row there is.
+	if got := pv(aapl.PnLAbsolute); got < 3.79 || got > 3.81 {
 		t.Fatalf("pnlAbsolute %+v", aapl)
 	}
 }
@@ -229,38 +227,39 @@ func TestSanitizeAutoTradingConfig(t *testing.T) {
 	}
 }
 
+// The allow flags gate autotrade's orders, never the monitoring's decision.
 func TestOmittedAllowFlagsAreFailClosed(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
-	_, e, _ := testEngine(t, bars)
+	_, e, br := testEngine(t, bars)
 	settings := e.DB.Settings()
 	settings["autoTrading"] = map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 0.75}
 	_ = e.DB.SaveSettings(settings)
-	ev := e.Evaluate()
+	ev := e.Execute("telegram_t1")
 	if asBool(ev.AutoTrading["allowNewEntries"]) || asBool(ev.AutoTrading["allowExits"]) {
 		t.Fatalf("missing allow flags must be false, got %+v", ev.AutoTrading)
 	}
-	if fmt.Sprint(ev.Decision["action"]) != "none" {
-		t.Fatalf("missing allowNewEntries must not enter %+v", ev.Decision)
+	if ev.Monitor.Opened == nil || len(br.Orders) != 0 || ev.Runs["webull"].Reason != "entries_disabled" {
+		t.Fatalf("the monitoring enters, missing allowNewEntries sends nothing: %+v %+v", ev.Runs["webull"], br.Orders)
 	}
 }
 
 func TestExplicitAllowNewEntriesFalseBlocksEntry(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
-	_, e, _ := testEngine(t, bars)
+	_, e, br := testEngine(t, bars)
 	settings := e.DB.Settings()
 	settings["autoTrading"] = map[string]any{
 		"enabled": true, "lowIBS": 0.9, "highIBS": 0.75,
 		"allowNewEntries": false, "allowExits": false,
 	}
 	_ = e.DB.SaveSettings(settings)
-	ev := e.Evaluate()
-	if fmt.Sprint(ev.Decision["action"]) != "none" {
-		t.Fatalf("explicit allowNewEntries=false must not enter %+v", ev.Decision)
+	if ev := e.Execute("telegram_t1"); len(br.Orders) != 0 || ev.Runs["webull"].Reason != "entries_disabled" {
+		t.Fatalf("explicit allowNewEntries=false must send no entry: %+v %+v", ev.Runs["webull"], br.Orders)
 	}
 }
 
 func TestHighIBSZeroDoesNotLiquidate(t *testing.T) {
-	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 11.9, Volume: 1}}
+	// IBS .5: an exit only if a zero highIBS were taken literally.
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 10, Volume: 1}}
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "t.db"))
 	if err != nil {
@@ -429,13 +428,13 @@ func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
 		IBS:        ev.ibs,
 		Thresholds: QuoteThresholds{LowIBS: low, HighIBS: high},
 	}}
-	d := decideLiveAction(quotes, []string{"AAPL"}, map[string]float64{}, nil, nil, true, true)
+	d := decideMonitor(quotes, []string{"AAPL"}, nil)
 	want := "none"
 	if ev.entry {
 		want = "entry"
 	}
 	if fmt.Sprint(d["action"]) != want {
-		t.Fatalf("decideLiveAction %+v want %s (entry=%v ibs=%v low=%v)", d, want, ev.entry, ev.ibs, low)
+		t.Fatalf("decideMonitor %+v want %s (entry=%v ibs=%v low=%v)", d, want, ev.entry, ev.ibs, low)
 	}
 
 	cfg0 := map[string]any{"lowIBS": 0.0, "highIBS": 0.80}
@@ -588,8 +587,9 @@ func TestInFlightPreventsDoubleRecord(t *testing.T) {
 	if e.pollOneTracker(map[string]any{"clientOrderId": oid, "symbol": "AAPL", "action": "entry", "quantity": 1.0, "dateKey": "2026-09-01"}) {
 		t.Fatal("inFlight should skip")
 	}
+	// The monitoring's row is there since the signal; the fill is not yet.
 	trades, _ := db.ListPositions()
-	if len(trades) != 0 {
+	if len(trades) != 1 || trades[0].Webull.Executed() {
 		t.Fatalf("double record %+v", trades)
 	}
 	e.mu.Lock()
@@ -597,7 +597,7 @@ func TestInFlightPreventsDoubleRecord(t *testing.T) {
 	e.mu.Unlock()
 	waitTrackerFinal(t, e, db, "AAPL", "entry")
 	trades, _ = db.ListPositions()
-	if len(trades) != 1 {
+	if len(trades) != 1 || trades[0].Webull.Qty != 1 {
 		t.Fatalf("after release %+v", trades)
 	}
 	_ = res
@@ -708,12 +708,21 @@ func TestT1SellsThenBuysInTheSameCycle(t *testing.T) {
 	br.FillStatus = "FILLED"
 	br.FillQty = 1
 	br.FillPrice = 11.9
+	// The broker's book catches up with the sell.
+	br.OnPositions = func() []any {
+		br.mu.Lock()
+		defer br.mu.Unlock()
+		if len(br.Orders) > 0 {
+			return []any{}
+		}
+		return []any{map[string]any{"symbol": "HELD", "quantity": 1.0}}
+	}
 
 	if _, err := e.Aggregate(1, AggregateOpts{ForceSend: true, UpdateState: true}); err != nil {
 		t.Fatal(err)
 	}
-	// awaitFlatAfterExit polls the exit tracker; the detail map answers FILLED
-	// for any id, so the exit closes and the entry is free to run.
+	// settleSells polls the exit tracker; the detail map answers FILLED for any
+	// id, so the sell settles, the book is empty and the entry is free to run.
 	var sold, bought bool
 	for _, o := range br.Orders {
 		if o.Symbol == "HELD" && o.Side == "SELL" {
@@ -953,16 +962,19 @@ func TestEmptyWatchlistStillExitsOpenPosition(t *testing.T) {
 	}
 }
 
-// Один расчёт читает позиции ровно один раз на брокера. Витрина читалась
-// дважды — сначала booksFor, затем общий обход брокеров, — и Webull отвечал на
-// второе чтение 429: его лимит на /account/positions около одного запроса в
-// две секунды.
-func TestEvaluateReadsPositionsOncePerBroker(t *testing.T) {
+// Решение мониторинга не спрашивает брокера ни о чём (CORE §3.1). Цикл с
+// входом читает книгу ровно один раз на брокера: Webull лимитирует
+// /account/positions примерно одним запросом в две секунды.
+func TestEvaluateReadsNoBrokerAndEntryReadsOnce(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	_, e, br := testEngine(t, bars)
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	e.Evaluate()
-	if br.PosCalls != 1 {
-		t.Fatalf("PosCalls = %d, want 1 per evaluation", br.PosCalls)
+	if br.PosCalls != 0 {
+		t.Fatalf("the monitoring's evaluation read the broker's positions %d times", br.PosCalls)
+	}
+	if res := e.Execute("telegram_t1"); !res.Executed || br.PosCalls != 1 {
+		t.Fatalf("PosCalls = %d, want 1 for the entry: %+v", br.PosCalls, res.Runs)
 	}
 }
 
@@ -986,14 +998,14 @@ func TestWatchThresholdsRejectUnreadableHighIBS(t *testing.T) {
 
 // The decision re-checks the pair it was handed: a quote row carrying a zero
 // highIBS must not close an open position on any reading above zero.
-func TestDecideLiveActionIgnoresZeroHighIBS(t *testing.T) {
+func TestDecideMonitorIgnoresZeroHighIBS(t *testing.T) {
 	quotes := []LiveQuote{{
 		Symbol:     "AAPL",
 		OK:         true,
 		IBS:        0.5,
 		Thresholds: QuoteThresholds{LowIBS: 0.1, HighIBS: 0},
 	}}
-	d := decideLiveAction(quotes, []string{"AAPL"}, map[string]float64{"AAPL": 10}, nil, &store.Position{Status: "open", Symbol: "AAPL"}, true, true)
+	d := decideMonitor(quotes, []string{"AAPL"}, &store.Position{Status: "open", Symbol: "AAPL"})
 	if fmt.Sprint(d["action"]) != "none" || fmt.Sprint(d["reason"]) != "exit_threshold_not_reached" {
 		t.Fatalf("IBS 0.5 with a zero highIBS must not exit: %+v", d)
 	}

@@ -94,9 +94,8 @@ func TestJournalReadErrorBlocksEvaluate(t *testing.T) {
 	if fmt.Sprint(ev.Decision["reason"]) != "journal_unavailable" {
 		t.Fatalf("Evaluate %+v", ev.Decision)
 	}
-	snap := e.Consistency()
-	if BlockingMismatch(snap) == nil {
-		t.Fatalf("Consistency must block: %+v", snap)
+	if snap := e.Consistency(); snap["ok"] != false {
+		t.Fatalf("Consistency must report the journal as unreadable: %+v", snap)
 	}
 }
 

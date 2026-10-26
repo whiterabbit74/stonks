@@ -2,27 +2,10 @@ package live
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"mktorder.com/go/internal/store"
 )
-
-// blockingMismatchCodes are the findings that hold back new entries.
-//
-// The list used to be seven codes long, and four of them were about the two
-// journals disagreeing with each other: a monitor row whose linked broker row
-// was gone, a legacy row that matched several, a symbol mismatch between the
-// pair. None of them can exist now — there is one row per position — and the
-// reconciliation that produced them is gone with them.
-//
-// What remains is about the world outside the database: a broker book we could
-// not read, and a journal we could not read. Both mean we do not know what we
-// hold, and buying on that is how a position gets opened twice.
-var blockingMismatchCodes = map[string]struct{}{
-	"broker_positions_unavailable": {},
-	"journal_unavailable":          {},
-}
 
 func (e *Engine) Consistency() map[string]any {
 	return e.consistencyWindow(backgroundWindow())
@@ -54,8 +37,10 @@ func (e *Engine) consistencyWindow(w execWindow) map[string]any {
 	}
 }
 
-// liveConsistencyIssues reports what the brokers hold that the journal does not
-// explain. Books are read in parallel and the findings ordered by the broker
+// liveConsistencyIssues checks the brokers' books against the monitoring's
+// positions: a book that cannot be read, a leg missing from a position the
+// broker does hold. What the monitoring does not hold is no finding at all.
+// Books are read in parallel and the findings ordered by the broker
 // snapshot: a Webull failure must not delay the Robinhood check, but the report
 // has to be deterministic (AUD-074).
 func (e *Engine) liveConsistencyIssues(open []store.Position, w execWindow) []map[string]any {
@@ -82,16 +67,10 @@ func (e *Engine) liveConsistencyIssues(open []store.Position, w execWindow) []ma
 		for _, sym := range sortedKeys(bk.held) {
 			p, journaled := openBySymbol[sym]
 			if !journaled {
-				// A ticker held with no open position of its own: bought by
-				// hand, or a fill whose journal write failed. It does not block
-				// anything — the engine exits a held position on its signal
-				// whether or not the journal knows about it — so this is a note
-				// to the operator, not a stop.
-				issues = append(issues, map[string]any{
-					"code": "broker_position_without_journal", "severity": "warning",
-					"message": fmt.Sprintf("%s держит %s, в журнале такой позиции нет.", brokerLabel(nb.name), sym),
-					"symbol":  sym, "broker": nb.name, "autoFixable": false,
-				})
+				// A ticker the monitoring does not hold — bought by hand, left
+				// over, another strategy's — is not the monitoring's business and
+				// not a discrepancy: autotrade clears it on the monitoring's next
+				// exit, and T-11 lists it as plain information (CORE §3).
 				continue
 			}
 			// The position is journaled but this broker's leg is empty: the
@@ -121,70 +100,6 @@ func sortedKeys(m map[string]float64) []string {
 		}
 	}
 	return out
-}
-
-func BlockingMismatch(snap map[string]any) map[string]any {
-	return BlockingMismatchFor(snap, "")
-}
-
-// BlockingMismatchFor returns the first blocking issue that applies to the
-// named broker: one that names it, or one that names no broker at all. An empty
-// broker matches every issue, which is what the unscoped BlockingMismatch
-// reports.
-func BlockingMismatchFor(snap map[string]any, broker string) map[string]any {
-	if snap == nil {
-		return nil
-	}
-	applies := func(iss map[string]any) bool {
-		if broker == "" {
-			return true
-		}
-		name := strings.ToLower(strings.TrimSpace(fmt.Sprint(iss["broker"])))
-		return name == "" || name == "<nil>" || name == strings.ToLower(broker)
-	}
-	raw, ok := snap["issues"]
-	if !ok {
-		return nil
-	}
-	switch issues := raw.(type) {
-	case []map[string]any:
-		for _, iss := range issues {
-			if _, hit := blockingMismatchCodes[fmt.Sprint(iss["code"])]; hit && applies(iss) {
-				return iss
-			}
-		}
-	case []any:
-		for _, row := range issues {
-			iss, _ := row.(map[string]any)
-			if iss == nil {
-				continue
-			}
-			if _, hit := blockingMismatchCodes[fmt.Sprint(iss["code"])]; hit && applies(iss) {
-				return iss
-			}
-		}
-	}
-	return nil
-}
-
-// entryBlockedBrokers maps each attached broker to whether a blocking issue
-// holds back its new entries. Exits are never gated by this — an open position
-// is closed on its exit signal regardless.
-func (e *Engine) entryBlockedBrokers(snap map[string]any) map[string]string {
-	out := map[string]string{}
-	for _, nb := range e.brokerSnapshot() {
-		if iss := BlockingMismatchFor(snap, nb.name); iss != nil {
-			out[nb.name] = fmt.Sprint(iss["code"])
-		}
-	}
-	return out
-}
-
-// clearedByFlatExit lists the block codes a broker's own confirmed exit
-// resolves: once this cycle's exit settled that broker flat, an unreadable book
-// from earlier in the same cycle no longer describes anything.
-var clearedByFlatExit = map[string]struct{}{
-	"broker_positions_unavailable": {},
 }
 
 // Reconcile repairs what it can and reports what it cannot.

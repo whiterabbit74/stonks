@@ -254,7 +254,7 @@ func TestAuthFailClosedEmptyPassword(t *testing.T) {
 		{"GET", "/api/datasets"},
 		{"POST", "/api/login"},
 		{"GET", "/api/auth/check"},
-		{"POST", "/api/autotrade/execute"},
+		{"POST", "/api/autotrade/evaluate"},
 		{"GET", "/api/status"},
 	} {
 		req := httptest.NewRequest(rt.method, rt.path, nil)

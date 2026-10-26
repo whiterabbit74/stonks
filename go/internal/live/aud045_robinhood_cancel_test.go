@@ -23,7 +23,9 @@ func TestOpenOrderCancelReadsRobinhoodFields(t *testing.T) {
 	}
 	br.Open = []any{map[string]any{"symbol": "AAPL", "state": "queued", "ref_id": stale}}
 
-	e.Execute("test")
+	if _, err := e.cancelOpenOrdersBeforeEntry(backgroundWindow(), "AAPL", br); err != nil {
+		t.Fatal(err)
+	}
 	if len(br.Cancelled) != 1 || br.Cancelled[0] != stale {
 		t.Fatalf("working Robinhood order must be cancelled before entry, cancelled=%v", br.Cancelled)
 	}

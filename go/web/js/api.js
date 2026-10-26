@@ -112,7 +112,6 @@ const API = {
   deletePosition: (id) => API.del('/api/positions/' + encodeURIComponent(id)),
   account: () => API.get('/api/autotrade/webull/account'),
   autoStatus: () => API.get('/api/autotrade/status'),
-  execute: () => API.post('/api/autotrade/execute', {}),
   logs: (limit) => API.get('/api/autotrade/logs' + (limit ? ('?limit=' + limit) : '')),
   emaAlerts: () => API.get('/api/telegram/ema-alerts'),
   addEmaAlert: (body) => API.post('/api/telegram/ema-alerts', body),

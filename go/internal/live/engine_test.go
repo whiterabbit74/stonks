@@ -61,9 +61,10 @@ func TestExecuteReserveSubmitTrack(t *testing.T) {
 	if len(logs) == 0 {
 		t.Fatal("expected log")
 	}
+	// The monitoring's row stands since the signal; the leg waits for the fill.
 	trades, _ := db.ListPositions()
-	if len(trades) != 0 {
-		t.Fatalf("must not record trade on submit: %+v", trades)
+	if len(trades) != 1 || trades[0].Webull.Executed() {
+		t.Fatalf("must not record a fill on submit: %+v", trades)
 	}
 	row, err := db.FindPendingTracker("AAPL", "entry")
 	if err != nil {
@@ -147,11 +148,13 @@ func TestSimulateDoesNotPlace(t *testing.T) {
 
 func TestBuildT1TextEscapesBrokerError(t *testing.T) {
 	_, e, _ := testEngine(t, entryBars)
+	_ = e
 	entry := EvalResult{
-		Decision: map[string]any{"action": "entry", "symbol": "AAPL"},
-		Broker:   map[string]any{"robinhood": OrderResult{Error: "qty < 1 & more"}},
+		AutoTrading: map[string]any{"enabled": true},
+		Monitor:     &MonitorStep{Entry: &LiveQuote{Symbol: "AAPL"}},
+		Runs:        map[string]*BrokerRun{"robinhood": {Buy: &OrderResult{Error: "qty < 1 & more", Symbol: "AAPL", Side: "BUY"}}},
 	}
-	text := e.buildT1Text(1, nil, nil, false, false, EvalResult{}, entry, nil)
+	text := t1AutoText(entry, false)
 	if strings.Contains(text, "qty < 1") {
 		t.Fatalf("raw broker error must be HTML-escaped, got %s", text)
 	}
@@ -176,7 +179,7 @@ func TestBuildT1TextNamesSubmitBroker(t *testing.T) {
 	if !res.Executed || len(rh.Orders) == 0 {
 		t.Fatalf("RH-only T-1 must submit: executed=%v orders=%d broker=%+v", res.Executed, len(rh.Orders), res.Broker)
 	}
-	text := e.buildT1Text(1, nil, nil, false, false, EvalResult{}, res, nil)
+	text := t1AutoText(res, false)
 	if !strings.Contains(text, "Robinhood") {
 		t.Fatalf("T-1 text must name Robinhood submit, got %s", text)
 	}
@@ -209,17 +212,6 @@ func TestAggregateT1NamesRobinhoodSubmit(t *testing.T) {
 	}
 	if strings.Contains(res.Text, "Webull") {
 		t.Fatalf("RH-only T-1 must not say Webull: %s", res.Text)
-	}
-}
-
-func TestExecOutcomesDoesNotAssumeWebull(t *testing.T) {
-	got := execOutcomes(OrderResult{Submitted: true, Quantity: 2})
-	if _, ok := got["webull"]; ok {
-		t.Fatalf("a bare OrderResult must not be labeled webull: %+v", got)
-	}
-	named := execOutcomes(map[string]any{"robinhood": OrderResult{Submitted: true, Quantity: 2}})
-	if !named["robinhood"].Submitted || named["webull"].Submitted {
-		t.Fatalf("name-keyed map must keep robinhood: %+v", named)
 	}
 }
 
@@ -303,9 +295,8 @@ func TestT1UnreadableBookHoldsEntryNotExit(t *testing.T) {
 	if len(br.Orders) != 0 {
 		t.Fatalf("mismatch must block live orders: %+v", br.Orders)
 	}
-	// Расхождение — предупреждение, а не остановка: текст обязан говорить, что
-	// придержан только вход, иначе оператор читает это как «торговля встала».
-	if !strings.Contains(res.Text, "Проверка состояния") || !strings.Contains(res.Text, "выход по сигналу уходит как обычно") {
+	// Мониторинг входит сам, брокер называет свою причину.
+	if !strings.Contains(res.Text, "Вход AAPL") || !strings.Contains(res.Text, "Webull: позиции брокера не читаются") {
 		t.Fatalf("mismatch telegram %s", res.Text)
 	}
 	if strings.Contains(res.Text, "Действий нет") {
@@ -327,9 +318,9 @@ func TestT1WaitForFillBlocksEntry(t *testing.T) {
 	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75})
 	_ = db.UpsertWatch(map[string]any{"symbol": "MSFT", "lowIBS": 0.9, "highIBS": 0.75})
 	_ = db.SavePosition(store.Position{ID: "b1", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-01", Quantity: 2, Webull: store.BrokerLeg{Qty: 2}})
-	_ = db.SavePosition(store.Position{ID: "m1", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-01"})
 	br := &MemoryBroker{Pos: []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}}
 	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": exitBars, "MSFT": entryBars}})
+	e.Sleep = func(time.Duration) {}
 	e.Broker = br
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
@@ -349,7 +340,7 @@ func TestT1WaitForFillBlocksEntry(t *testing.T) {
 	if row == nil {
 		t.Fatal("expected pending exit tracker")
 	}
-	if !strings.Contains(res.Text, "ждём подтверждение fill") && !strings.Contains(res.Text, "fill") {
+	if !strings.Contains(res.Text, "продажи не подтвердились до закрытия — вход MSFT пропущен") {
 		t.Fatalf("wait-for-fill telegram %s", res.Text)
 	}
 }
@@ -643,7 +634,7 @@ func TestT1TextHasFreshnessAndPosition(t *testing.T) {
 	if !strings.Contains(res.Text, "Котировки:") || !strings.Contains(res.Text, "Позиция: AAPL") {
 		t.Fatalf("T-1 missing freshness/position:\n%s", res.Text)
 	}
-	if !strings.Contains(res.Text, "1 минута до закрытия") || !strings.Contains(res.Text, "РЕШЕНИЕ") {
+	if !strings.Contains(res.Text, "1 минута до закрытия") || !strings.Contains(res.Text, "МОНИТОРИНГ") {
 		t.Fatalf("T-1 must be the decision message, not T-11 overview:\n%s", res.Text)
 	}
 	if strings.Contains(res.Text, "11m") || strings.Contains(res.Text, "ENTRY:") {
@@ -751,7 +742,7 @@ func TestT1DryRunSameQuotesAsNode(t *testing.T) {
 	if action != "entry" || symbol != "AAPL" {
 		t.Fatalf("decision %+v (Node oracle: entry AAPL)", ev.Decision)
 	}
-	if !strings.Contains(sim.Text, "Открываем AAPL") {
+	if !strings.Contains(sim.Text, "Вход AAPL") {
 		t.Fatalf("T-1 dry-run text should enter AAPL:\n%s", sim.Text)
 	}
 	price := 0.0
@@ -805,10 +796,10 @@ func TestT1DryRunSameWatchesAsNode(t *testing.T) {
 	if len(br.Orders) != 0 {
 		t.Fatalf("dry-run placed %+v", br.Orders)
 	}
-	if !strings.Contains(sim.Text, "Открываем AAPL") {
+	if !strings.Contains(sim.Text, "Вход AAPL") {
 		t.Fatalf("Node-equivalent T-1 should enter AAPL:\n%s", sim.Text)
 	}
-	if strings.Contains(sim.Text, "Открываем AMZN") || strings.Contains(sim.Text, "Открываем MSFT") || strings.Contains(sim.Text, "Открываем V") {
+	if strings.Contains(sim.Text, "Вход AMZN") || strings.Contains(sim.Text, "Вход MSFT") || strings.Contains(sim.Text, "Вход V ") {
 		t.Fatalf("should only enter lowest IBS:\n%s", sim.Text)
 	}
 	ev := e.Evaluate()
@@ -917,9 +908,10 @@ func TestCancelOpenOrdersBeforeEntry(t *testing.T) {
 		"clientOrderId": "old-1", "symbol": "AAPL", "action": "entry",
 		"status": "expired", "quantity": 1.0, "source": "test", "dateKey": "2026-09-01",
 	})
-	res := e.Execute("test")
-	if !res.Executed {
-		t.Fatalf("execute %+v", res)
+	// The cycle's preflight holds an entry next to any working order in the
+	// ticker; this guard is what clears our own one at submission.
+	if _, err := e.cancelOpenOrdersBeforeEntry(backgroundWindow(), "AAPL", br); err != nil {
+		t.Fatal(err)
 	}
 	if len(br.Cancelled) != 1 || br.Cancelled[0] != "old-1" {
 		t.Fatalf("cancelled %+v", br.Cancelled)

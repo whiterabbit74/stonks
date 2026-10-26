@@ -1,14 +1,15 @@
 package live
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
 	"mktorder.com/go/internal/types"
 )
 
-// TestEntryBlockedWhenOwnOrderCancelFails covers AUD-025: a manual Execute
-// finds our own working order on the entry symbol and fails to cancel it. The
+// TestEntryBlockedWhenOwnOrderCancelFails covers AUD-025: the cycle finds our
+// own working order on the entry symbol and fails to cancel it. The
 // new MARKET BUY must not go out next to the order still live at the broker.
 func TestEntryBlockedWhenOwnOrderCancelFails(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
@@ -27,16 +28,15 @@ func TestEntryBlockedWhenOwnOrderCancelFails(t *testing.T) {
 	br.Open = []any{map[string]any{"symbol": "AAPL", "status": "WORKING", "client_order_id": stale}}
 	br.FailCancel = fmt.Errorf("cancel order: 503")
 
+	// The cycle's preflight already holds the entry next to a working order in
+	// the same ticker.
 	res := e.Execute("test")
-	if res.Executed || res.Submitted {
-		t.Fatalf("entry must be blocked while our order may still be live: %+v", res.Broker)
+	if res.Executed || len(br.Orders) != 0 || res.Runs["webull"].Reason != "symbol_order_in_flight" {
+		t.Fatalf("entry must be held while our order may still be live: %+v %+v", res.Runs["webull"], br.Orders)
 	}
-	if len(br.Orders) != 0 {
-		t.Fatalf("no MARKET may leave after a failed cancel: %d placements", len(br.Orders))
-	}
-	byBroker, _ := res.Broker.(map[string]any)
-	bk, _ := byBroker["webull"].(map[string]any)
-	if got := fmt.Sprint(bk["error"]); got != "open_order_cancel_failed" {
-		t.Fatalf("block reason = %q, want open_order_cancel_failed", got)
+	// And the submission's own guard, should an order appear after the
+	// preflight, refuses rather than buying next to it.
+	if _, err := e.cancelOpenOrdersBeforeEntry(backgroundWindow(), "AAPL", br); !errors.Is(err, ErrOpenOrderCancelFailed) {
+		t.Fatalf("a failed cancel must refuse the entry, got %v", err)
 	}
 }

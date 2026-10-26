@@ -20,10 +20,7 @@ func TestTrackerResolveEndpoint(t *testing.T) {
 	br.ListingLag = true
 	s.Live.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 
-	rec := postJSON(s, "/api/autotrade/execute", map[string]any{})
-	if rec.Code != 200 {
-		t.Fatalf("execute %d %s", rec.Code, rec.Body.String())
-	}
+	s.Live.Execute("telegram_t1")
 	if len(br.Orders) != 1 {
 		t.Fatalf("want 1 broker order, got %+v", br.Orders)
 	}
@@ -39,7 +36,7 @@ func TestTrackerResolveEndpoint(t *testing.T) {
 	}
 
 	// Wrong outcome value is rejected.
-	rec = postJSON(s, "/api/autotrade/trackers/"+oid+"/resolve", map[string]any{"outcome": "maybe", "note": "x"})
+	rec := postJSON(s, "/api/autotrade/trackers/"+oid+"/resolve", map[string]any{"outcome": "maybe", "note": "x"})
 	if rec.Code != 400 {
 		t.Fatalf("invalid outcome: want 400, got %d %s", rec.Code, rec.Body.String())
 	}

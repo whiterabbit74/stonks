@@ -7,23 +7,6 @@ import (
 	"testing"
 )
 
-// AUD-002: the exit-fill journal read. An unreadable journal used to make
-// awaitFlatAfterExit answer "flat", which is the same answer as a closed
-// position — so the T-1 re-entry fired on top of a position that may still
-// have been open.
-func TestAUD002UnreadableJournalIsNotFlat(t *testing.T) {
-	_, e, _ := testEngine(t, nil)
-	if !e.awaitFlatAfterExit(nil) {
-		t.Fatal("an empty journal is flat")
-	}
-	if _, err := e.DB.SQL.Exec(`DROP TABLE positions`); err != nil {
-		t.Fatal(err)
-	}
-	if e.awaitFlatAfterExit(nil) {
-		t.Fatal("an unreadable journal must not be reported as flat")
-	}
-}
-
 // AUD-002: UpdatePositions writes on what it reads. An unreadable monitor
 // journal looked like "no open trades" and cleared isOpenPosition and
 // currentTradeId on every watch, while still reporting success.

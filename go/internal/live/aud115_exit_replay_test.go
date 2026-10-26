@@ -13,7 +13,7 @@ import (
 func TestExitFillReplayLeavesReentryAlone(t *testing.T) {
 	db, e, _ := testEngine(t, nil)
 	if err := db.SavePosition(store.Position{
-		ID: "p1", Symbol: "AAPL", Status: "open", Quantity: 4, EntryPrice: store.Ptr(10.0),
+		ID: "p1", Symbol: "AAPL", Status: "open", Quantity: 4, EntryPrice: store.Ptr(10.0), IsTest: true, // lives by its fills
 		Webull: store.BrokerLeg{Qty: 4, EntryPrice: store.Ptr(10.0), EntryOrderID: "w1"},
 	}); err != nil {
 		t.Fatal(err)

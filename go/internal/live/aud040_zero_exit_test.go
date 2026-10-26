@@ -9,7 +9,7 @@ import (
 
 // AUD-040: ответ брокера без цены исполнения закрывал позицию по нулю и
 // записывал в журнал выдуманный убыток «минус весь вход». Неизвестная цена
-// остаётся NULL, и PnL вместе с ней (CORE_TRADING_LOGIC §12).
+// остаётся NULL (CORE_TRADING_LOGIC, инвариант J).
 func TestExitWithoutPriceLeavesPriceAndPnLUnknown(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
@@ -37,13 +37,11 @@ func TestExitWithoutPriceLeavesPriceAndPnLUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Status != "closed" {
-		t.Fatalf("позиция должна закрыться: %s", p.Status)
+	// The fill writes the leg only; the monitoring closes its row by signal.
+	if p.Status != "open" || p.Webull.Qty != 0 || p.Webull.ExitOrderID != "exit" {
+		t.Fatalf("продажа должна обнулить ногу и не трогать строку: %+v", p)
 	}
-	if p.ExitPrice != nil {
-		t.Fatalf("цена выхода не подтверждена, ожидался NULL: %v", *p.ExitPrice)
-	}
-	if p.PnLAbsolute != nil || p.PnLPercent != nil {
-		t.Fatalf("PnL без цены выхода должен быть NULL: abs=%v pct=%v", p.PnLAbsolute, p.PnLPercent)
+	if p.Webull.ExitPrice != nil {
+		t.Fatalf("цена исполнения не подтверждена, ожидался NULL: %v", *p.Webull.ExitPrice)
 	}
 }

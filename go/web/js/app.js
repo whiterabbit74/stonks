@@ -886,6 +886,10 @@
       exits_disabled: 'выходы выключены в настройках',
       no_signal: 'нет сигнала на вход',
       empty_symbol_universe: 'нет тикеров для мониторинга',
+      broker_not_flat: 'на счёте остаток — вход пропущен',
+      sells_not_settled: 'продажи не подтвердились — вход пропущен',
+      broker_positions_unavailable: 'позиции брокера не читаются',
+      symbol_order_in_flight: 'по тикеру уже висит заявка',
     };
     return m[raw] || raw;
   }
@@ -2774,9 +2778,6 @@
     } else if (tab === 'autotrade') {
       const st = state.autoStatus || {};
       const last = (st.state && st.state.lastRunAt) || '—';
-      // The fresh evaluation carries one showcase decision computed on one
-      // broker's book; showing it on another broker's tab was AUD-021.
-      const dec = st.evaluation && st.evaluation.decision && st.evaluation.decisionBroker === kind ? st.evaluation.decision : {};
       const ac = state.autoConfig || {};
       const tok = state.token || {};
       const conn = (state.dashboard && state.dashboard.connection) || {};
@@ -2807,7 +2808,9 @@
         </div>`).join('')}</div>` : '';
       const mode = capitalModeByValue(ac.entryCapitalMode);
       const lastPack = st.state && st.state.lastResult;
-      const lastRes = (lastPack && lastPack.brokerDecisions && lastPack.brokerDecisions[kind]) || (lastPack && lastPack.decision) || dec;
+      // What this broker did in the last cycle. The monitoring's own decision
+      // is not this broker's and is not shown as one (AUD-021).
+      const lastRes = (lastPack && lastPack.brokerDecisions && lastPack.brokerDecisions[kind]) || {};
       // Broker-specific connection card: Webull uses a pasted API token,
       // Robinhood uses the copy-paste OAuth flow on the "Подключение" tab -
       // rendering the Webull token panel here on /robinhood was P2-3.
@@ -2839,7 +2842,7 @@
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Статус</div><div class="mt-1 font-semibold">${ac.enabled ? 'Включена' : 'Выключена'}</div></div>
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последний запуск</div><div class="mt-1 text-sm">${esc(formatDateTimeET(last) === '—' ? last : formatDateTimeET(last))}</div></div>
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Входы / выходы (${esc(brokerLabel(kind))})</div><div class="mt-1 text-sm">${brokerFlag(ac, kind, 'allowNewEntries') ? 'да' : 'нет'} / ${brokerFlag(ac, kind, 'allowExits') ? 'да' : 'нет'}</div></div>
-            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последнее решение</div><div class="mt-1 text-sm">${esc(decisionActionText(lastRes.action || dec.action))} ${esc(lastRes.symbol || dec.symbol || '')}</div><div class="text-xs text-gray-500">${esc(decisionReasonText(lastRes.reason || dec.reason || ''))}</div></div>
+            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последнее решение</div><div class="mt-1 text-sm">${esc(decisionActionText(lastRes.action))} ${esc(lastRes.symbol || '')}</div><div class="text-xs text-gray-500">${esc(decisionReasonText(lastRes.reason || ''))}</div></div>
           </div>
           <div class="mt-4 rounded-xl bg-gray-50 p-3 text-sm dark:bg-gray-950/40">
             <div class="flex items-center justify-between gap-3 mb-2">
@@ -2856,12 +2859,11 @@
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Резерв на вход</dt><dd>не меньше ${esc((effectiveReservePct(mode, ac) * 100).toFixed(2))}%</dd></div>
             </dl>
             <p class="text-xs text-gray-500 mt-2">${esc(capitalModeHint(mode, ac))}. Торгуются тикеры со страницы «Мониторинг».${ac.lastModifiedAt ? (' Обновлено: ' + esc(formatDateTimeET(ac.lastModifiedAt)) + ' ET') : ''}</p>
-            <p class="text-xs text-gray-500 mt-2">Окно исполнения — предохранитель кнопки «Исполнить»: заявка уйдёт, только если до закрытия осталось не больше этого времени. К регулярному T-1 оно не применяется (он и так привязан к закрытию), см. вкладку «Настройки» → «Автоторговля». Порог проскальзывания — уже не только уведомление постфактум: перед расчётом количества акций из доступных средств вычитается резерв, равный максимуму из порога проскальзывания, настроенного резерва на вход и жёсткого минимума 0.5%. Заявка при этом остаётся рыночной и отправляется в любом случае — резерв защищает не саму заявку, а точность её размера.</p>
+            <p class="text-xs text-gray-500 mt-2">Автоторговля только следует сигналам мониторинга на T-1: выход мониторинга продаёт у брокера всё, вход покупается только в пустой счёт. Порог проскальзывания — уже не только уведомление постфактум: перед расчётом количества акций из доступных средств вычитается резерв, равный максимуму из порога проскальзывания, настроенного резерва на вход и жёсткого минимума 0.5%. Заявка при этом остаётся рыночной и отправляется в любом случае — резерв защищает не саму заявку, а точность её размера.</p>
           </div>
           <div class="mt-4 flex flex-wrap gap-2">
             <button type="button" id="auto-enable" class="btn-primary min-h-0 py-2">${ac.enabled ? 'Выключить автоторговлю' : 'Включить автоторговлю'}</button>
             <button type="button" id="auto-refresh" class="btn-secondary min-h-0 py-2">Обновить статус</button>
-            <button type="button" id="auto-execute" class="btn-secondary min-h-0 py-2">Исполнить</button>
           </div>
           ${rawJsonBlock('Исходные данные настроек автоторговли', ac)}
           ${rawJsonBlock('Исходные данные отслеживаемых ордеров', tracked)}
@@ -3088,7 +3090,7 @@
             <label class="text-sm">Порог проскальзывания, bps<input name="autoSlippage" type="number" min="0" max="1000" step="1" required value="${esc(ac.maxSlippageBps ?? 25)}" class="field mt-1" /></label>
             <label class="text-sm">Резерв на вход, %<input name="autoEntryReserve" type="number" min="0.5" max="10" step="0.1" required title="От 0.5% до 10%" value="${esc(((ac.entryReservePct ?? 0.005) * 100).toFixed(2))}" class="field mt-1" /></label>
           </div>
-          <p class="text-xs text-gray-500 mt-1">Окно: кнопка «Исполнить» отправит заявку, только если до закрытия осталось не больше этого времени, — страховка от случайной сделки среди дня. Регулярный запуск в T-1 через это окно не проходит: он и так привязан к закрытию.</p>
+          <p class="text-xs text-gray-500 mt-1">Окно исполнения сейчас ни на что не влияет: кнопки «Исполнить» больше нет, заявки уходят только в цикле T-1 вслед за мониторингом.</p>
           <p class="text-xs text-gray-500 mt-1">Проскальзывание больше не только предупреждает: заявку оно не ограничивает (она рыночная и должна исполниться), но перед расчётом количества акций из доступных средств вычитается резерв — не меньше 0.5%, не меньше выставленного здесь значения и не меньше самого порога проскальзывания (25 bps = 0.25% резерва). Так количество акций считается не впритык к покупательной способности: движение цены между котировкой на T-1 и фактическим исполнением не даст брокеру отклонить заявку по нехватке средств.</p>
         </div>
         <p class="text-sm text-gray-600">Состояние брокеров — на страницах <a href="/webull" data-nav class="text-indigo-600">Webull</a> и <a href="/robinhood" data-nav class="text-indigo-600">Robinhood</a>.</p>`;
@@ -4431,20 +4433,6 @@
         });
       });
       document.getElementById('auto-refresh')?.addEventListener('click', () => { reloadBroker(); });
-      document.getElementById('auto-execute')?.addEventListener('click', (ev) => {
-        const btn = ev.currentTarget;
-        askDelete('Это боевой ордер, не симуляция. Отправить реальные заявки брокеру сейчас?', async () => {
-          await withBusy(btn, async () => {
-            try {
-              const r = await API.execute();
-              const dec = (r && r.brokerDecisions && r.brokerDecisions[kind]) || (r && r.decision) || {};
-              const skipped = r && r.broker && r.broker.error;
-              toast(r && r.executed ? ('Исполнено: ' + (dec.action || '') + ' ' + (dec.symbol || '')) : (decisionReasonText(skipped || dec.reason) || 'Не исполнено'));
-              await reloadBroker();
-            } catch (err) { toast(errText(err)); }
-          });
-        }, { title: 'Исполнить?', okLabel: 'Исполнить' });
-      });
       root.querySelectorAll('[data-close-pos]').forEach((b) => b.addEventListener('click', async () => {
         if (!window.confirm('Закрыть позицию ' + b.dataset.closePos + ' рыночным ордером в ' + brokerLabel(kind) + '?')) return;
         await withBusy(b, async () => {

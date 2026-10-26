@@ -24,26 +24,16 @@ var T1DeadlineSafetyMargin = 5 * time.Second
 // wall clock and would not reflect a test's simulated elapsed time.
 //
 // A zero execWindow (deadline.IsZero()) means "no deadline": the paths that
-// are not the T-1 close-of-session order (manual execute, TestBuy,
-// ClosePosition) keep behaving exactly as before this change.
+// are not the T-1 close-of-session order (TestBuy, ClosePosition) keep
+// behaving exactly as before this change.
 type execWindow struct {
 	ctx      context.Context
 	deadline time.Time
-	// entryBlocked names the brokers that may still exit but must not open
-	// anything new, mapped to the issue code that blocks them (a consistency
-	// mismatch, or open orders that could not be listed). Per broker on
-	// purpose: Webull's state must never decide whether Robinhood exits, and
-	// vice versa. The code is kept so a reason this cycle's own exit resolves
-	// can be dropped before the entry pass (AUD-084).
-	entryBlocked map[string]string
 	// busySymbols names, per broker, the tickers that already have a working
 	// order there. A working order can only double an order in the same
 	// ticker, so it holds back that ticker and nothing else: a stray order on
 	// TSLA is no reason to leave an SPY position unexited (AUD-072).
 	busySymbols map[string]map[string]bool
-	// skipReasons carries the pre-flight finding per broker so a run that
-	// submits nothing can still say why in the T-1 message (AUD-069).
-	skipReasons map[string]string
 	// placing marks the stretch where this broker's order is already being
 	// sent. The reads inside it (position size, cancelling our own working
 	// orders) belong to the order, not to the pre-flight survey, so they get

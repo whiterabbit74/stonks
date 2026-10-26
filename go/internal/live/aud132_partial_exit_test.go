@@ -25,7 +25,7 @@ func partialExitEngine(t *testing.T, withPosition bool) (*Engine, *store.DB, *Me
 	if withPosition {
 		if err := db.SavePosition(store.Position{
 			ID: "p", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20",
-			EntryPrice: store.Ptr(10.0), Quantity: 10,
+			EntryPrice: store.Ptr(10.0), Quantity: 10, IsTest: true, // lives by its fills
 			Webull: store.BrokerLeg{Qty: 10, EntryPrice: store.Ptr(10.0)},
 		}); err != nil {
 			t.Fatal(err)
@@ -82,16 +82,19 @@ func TestPartialExitKeepsIBSDateAndOrder(t *testing.T) {
 	}
 }
 
-// AUD-132: a partial exit with nothing to close is said out loud, as a full one.
-func TestPartialExitWithoutPositionAlarms(t *testing.T) {
+// A partial sell in nobody's leg is a leftover, not a position's exit: it is
+// logged with what it got and raises no alarm (invariant K.4).
+func TestPartialExitWithoutPositionIsALeftover(t *testing.T) {
 	e, _, tg, tracker := partialExitEngine(t, false)
 	e.finalizeTrackerStatus(tracker, map[string]any{"status": "CANCELLED", "filled_qty": 4.0, "filled_price": 11.0}, "cancelled")
 	for _, m := range tg.Messages {
-		if strings.Contains(m[1], "выход без открытой позиции") {
-			return
+		if strings.Contains(m[1], "без открытой позиции") {
+			t.Fatalf("a leftover sale is no alarm: %v", m)
 		}
 	}
-	t.Fatalf("no alarm: %v", tg.Messages)
+	if !hasAutotradeLog(t, e, "leftover_sold") {
+		t.Fatal("the leftover sale must be logged")
+	}
 }
 
 // AUD-134: a fill the journal failed to take keeps the tracker pending so the

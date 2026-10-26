@@ -145,10 +145,6 @@ func (s *Server) handleAutoStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, s.liveEng().Status())
 }
 
-func (s *Server) handleAutoExecute(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, s.liveEng().ExecuteCtx(r.Context(), "manual_execute"))
-}
-
 func (s *Server) handleWebullAccount(w http.ResponseWriter, r *http.Request) {
 	snap, err := s.liveEng().Account()
 	if err != nil {

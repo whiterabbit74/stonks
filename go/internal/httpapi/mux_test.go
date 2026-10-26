@@ -42,7 +42,7 @@ var allRoutes = []struct{ Method, Path string }{
 	{"GET", "/api/test/twelve-data"}, {"POST", "/api/test-provider"},
 	{"GET", "/api/status"}, {"GET", "/healthz"}, {"GET", "/readyz"},
 	{"GET", "/api/autotrade/config"}, {"PATCH", "/api/autotrade/config"}, {"GET", "/api/autotrade/status"},
-	{"POST", "/api/autotrade/evaluate"}, {"POST", "/api/autotrade/execute"},
+	{"POST", "/api/autotrade/evaluate"},
 	{"GET", "/api/autotrade/webull/account"}, {"GET", "/api/autotrade/webull/dashboard"}, {"GET", "/api/autotrade/logs"},
 	{"POST", "/api/autotrade/webull/close-position"}, {"POST", "/api/autotrade/webull/test-buy"},
 	{"POST", "/api/autotrade/webull/token/create"}, {"POST", "/api/autotrade/webull/token/check"},

@@ -27,9 +27,6 @@ func TestConsistencyIsSilentOnAJournaledPosition(t *testing.T) {
 	if len(issues) != 0 {
 		t.Fatalf("a journaled position is not a finding: %+v", issues)
 	}
-	if BlockingMismatch(snap) != nil {
-		t.Fatalf("nothing here blocks entries: %+v", issues)
-	}
 }
 
 // Both brokers holding the same journaled ticker is the normal two-broker case,
@@ -53,20 +50,16 @@ func TestConsistencySilentWhenBothBrokersHoldTheSamePosition(t *testing.T) {
 	}
 }
 
-// A ticker held with nothing in the journal is worth saying out loud, but it
-// does not block: the engine exits a held position on its signal whether or not
-// the journal knows about it.
-func TestConsistencyReportsHeldTickerWithoutJournalWithoutBlocking(t *testing.T) {
+// A ticker the monitoring does not hold is not a finding at all: it is
+// autotrade's to clear on the monitoring's next exit, and T-11 lists it as
+// plain information (CORE §3).
+func TestConsistencyIgnoresTickerTheMonitoringDoesNotHold(t *testing.T) {
 	e, webull, rh := dualBrokerEngine(t, entryBars)
-	webull.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 1.0}}
-	rh.Pos = nil
+	webull.Pos = []any{map[string]any{"symbol": "TQQQ", "quantity": 10.0}}
+	rh.Pos = []any{map[string]any{"symbol": "TQQQ", "quantity": 5.0}}
 	snap := e.Consistency()
-	issues, _ := snap["issues"].([]map[string]any)
-	if len(issues) != 1 || fmt.Sprint(issues[0]["code"]) != "broker_position_without_journal" {
-		t.Fatalf("want one note about the unjournaled position: %+v", issues)
-	}
-	if BlockingMismatch(snap) != nil {
-		t.Fatal("an unjournaled broker position must not block entries")
+	if issues, _ := snap["issues"].([]map[string]any); len(issues) != 0 {
+		t.Fatalf("a leftover is no finding: %+v", issues)
 	}
 }
 
@@ -86,20 +79,14 @@ func TestConsistencyOffersToFillAMissingLeg(t *testing.T) {
 	}
 }
 
-// An unreadable broker book is the one live finding that still blocks: we do
-// not know what we hold, and buying on that is how a position gets opened twice.
-func TestUnreadableBookBlocksEntries(t *testing.T) {
+// An unreadable broker book is still reported, and named by its broker.
+func TestUnreadableBookIsReported(t *testing.T) {
 	e, webull, rh := dualBrokerEngine(t, entryBars)
 	webull.FailPositions = fmt.Errorf("positions down")
 	rh.Pos = nil
-	snap := e.Consistency()
-	block := BlockingMismatch(snap)
-	if block == nil || fmt.Sprint(block["code"]) != "broker_positions_unavailable" {
-		t.Fatalf("unreadable book must block: %+v", snap["issues"])
-	}
-	// It blocks that broker, not the other one.
-	if BlockingMismatchFor(snap, "robinhood") != nil {
-		t.Fatal("Webull's unreadable book must not block Robinhood")
+	issues, _ := e.Consistency()["issues"].([]map[string]any)
+	if len(issues) != 1 || fmt.Sprint(issues[0]["code"]) != "broker_positions_unavailable" || issues[0]["broker"] != "webull" {
+		t.Fatalf("unreadable Webull book must be reported as Webull's: %+v", issues)
 	}
 }
 
@@ -110,9 +97,12 @@ func TestHeldSymbolsStayPerBroker(t *testing.T) {
 	e, webull, rh := dualBrokerEngine(t, entryBars)
 	webull.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 1.0}}
 	rh.Pos = []any{map[string]any{"symbol": "MSFT", "quantity": 2.0}}
-	byBroker, err := e.heldSymbolsByBroker()
-	if err != nil {
-		t.Fatal(err)
+	byBroker := map[string]map[string]float64{}
+	for name, bk := range e.heldSymbolsByBrokerBooks(backgroundWindow()) {
+		if bk.err != nil {
+			t.Fatal(bk.err)
+		}
+		byBroker[name] = bk.held
 	}
 	if byBroker["webull"]["AAPL"] != 1 || len(byBroker["webull"]) != 1 {
 		t.Fatalf("Webull держит только AAPL, got %v", byBroker["webull"])

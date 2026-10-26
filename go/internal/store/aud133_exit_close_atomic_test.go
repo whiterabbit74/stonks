@@ -4,6 +4,7 @@ import "testing"
 
 // AUD-133: the leg write and the close commit together, and an open row left
 // with a flat leg by a crash before the fix is closed when the fill replays.
+// Fills close test rows only; the monitoring closes its own.
 func TestExitLegClosesFlatPositionAtomically(t *testing.T) {
 	db := openTestDB(t)
 	for _, id := range []string{"w-exit", "z-exit"} {
@@ -15,7 +16,7 @@ func TestExitLegClosesFlatPositionAtomically(t *testing.T) {
 		}
 	}
 	if err := db.SavePosition(Position{
-		ID: "p1", Symbol: "AAPL", Status: "open", Quantity: 4, EntryDate: "2026-09-01", EntryPrice: Ptr(10.0),
+		ID: "p1", Symbol: "AAPL", Status: "open", Quantity: 4, EntryDate: "2026-09-01", EntryPrice: Ptr(10.0), IsTest: true,
 		Webull: BrokerLeg{Qty: 4, EntryPrice: Ptr(10.0), EntryOrderID: "w1"},
 	}); err != nil {
 		t.Fatal(err)
@@ -27,7 +28,7 @@ func TestExitLegClosesFlatPositionAtomically(t *testing.T) {
 
 	// Zombie: claim and flat leg committed, close never happened.
 	if err := db.SavePosition(Position{
-		ID: "p2", Symbol: "MSFT", Status: "open", Quantity: 4, EntryDate: "2026-09-01", EntryPrice: Ptr(10.0),
+		ID: "p2", Symbol: "MSFT", Status: "open", Quantity: 4, EntryDate: "2026-09-01", EntryPrice: Ptr(10.0), IsTest: true,
 		Webull: BrokerLeg{Qty: 0, EntryPrice: Ptr(10.0), EntryOrderID: "w2", ExitOrderID: "z-exit", ExitPrice: Ptr(12.0)},
 	}); err != nil {
 		t.Fatal(err)

@@ -1,5 +1,9 @@
 package live
 
+// The split of a partial exit into a closed part is how a test row — the kind
+// that lives by its fills — records it; the monitoring's row only shrinks its
+// leg (store/monitor_position_test.go).
+
 import (
 	"fmt"
 	"path/filepath"
@@ -20,7 +24,7 @@ func TestPartialFillReplayDoesNotReduceTwice(t *testing.T) {
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
 	e.Now = nearCloseNow()
-	if err := db.SavePosition(store.Position{ID: "wb-aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20", EntryPrice: store.Ptr[float64](10.0), Quantity: 10.0, Webull: store.BrokerLeg{Qty: 10.0, EntryPrice: store.Ptr[float64](10.0)}}); err != nil {
+	if err := db.SavePosition(store.Position{ID: "wb-aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20", EntryPrice: store.Ptr[float64](10.0), Quantity: 10.0, IsTest: true, Webull: store.BrokerLeg{Qty: 10.0, EntryPrice: store.Ptr[float64](10.0)}}); err != nil {
 		t.Fatal(err)
 	}
 	tracker := map[string]any{
@@ -63,7 +67,7 @@ func TestSecondPartialFillRecordsOnlyTheDifference(t *testing.T) {
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
 	e.Now = nearCloseNow()
-	if err := db.SavePosition(store.Position{ID: "wb-aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20", EntryPrice: store.Ptr[float64](10.0), Quantity: 10.0, Webull: store.BrokerLeg{Qty: 10.0, EntryPrice: store.Ptr[float64](10.0)}}); err != nil {
+	if err := db.SavePosition(store.Position{ID: "wb-aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20", EntryPrice: store.Ptr[float64](10.0), Quantity: 10.0, IsTest: true, Webull: store.BrokerLeg{Qty: 10.0, EntryPrice: store.Ptr[float64](10.0)}}); err != nil {
 		t.Fatal(err)
 	}
 	tracker := map[string]any{

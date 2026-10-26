@@ -413,7 +413,11 @@ Read-modify-write общей строки **запрещён**. Брокеры �
 а не побочный эффект рефакторинга:
 
 - два слоя: мониторинг без брокеров и автоторговля за ним —
-  `go/internal/live/monitor_layers_test.go`;
+  `go/internal/live/monitor_layers_test.go`, остаток у брокера (прод 2026-10-26,
+  TQQQ) — `aud071_reentry_test.go`, очистка счёта на выходе —
+  `unwatched_position_test.go`, `aud084_entry_unblock_test.go`;
+- позиция мониторинга в журнале: открывает и закрывает сигнал, ноги пишут
+  исполнения — `go/internal/store/monitor_position_test.go`;
 - независимость и изоляция брокеров — `broker_independence_test.go`,
   `broker_isolation_test.go`;
 - бюджет минуты — `core02_read_budget_test.go`, `aud005_deadline_test.go`,

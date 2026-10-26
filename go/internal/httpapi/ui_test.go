@@ -614,17 +614,13 @@ func TestAutotradeCardDisclaimsExecutionWindowAndSlippage(t *testing.T) {
 		t.Fatal("autotrade tab body not bounded")
 	}
 	section := a[start : start+end]
-	if strings.Contains(section, "Окно исполнения не является предохранителем сделки") {
-		t.Fatal("autotrade tab must not keep the old «окно не предохранитель» sentence now that Исполнить is back")
+	// Autotrade only follows the monitoring at T-1: there is no button that
+	// sends orders on the current reading (CORE §3.1).
+	if strings.Contains(section, `id="auto-execute"`) || strings.Contains(a, "API.execute(") {
+		t.Fatal("the autotrade tab must not send orders outside the monitoring's T-1")
 	}
-	if !strings.Contains(section, `id="auto-execute"`) {
-		t.Fatal("autotrade tab must have the Исполнить button")
-	}
-	if !strings.Contains(a, "API.execute(") {
-		t.Fatal("app.js must call API.execute for the Исполнить button")
-	}
-	if !strings.Contains(section, "регулярному T-1 оно не применяется") {
-		t.Fatal("autotrade tab card must say the execution window does not apply to the regular T-1 run")
+	if !strings.Contains(section, "только следует сигналам мониторинга") {
+		t.Fatal("autotrade tab card must say autotrade only follows the monitoring")
 	}
 	if !strings.Contains(section, "резерв") || !strings.Contains(section, "проскальзывания") {
 		t.Fatal("autotrade tab card must explain that the slippage threshold now floors the entry sizing reserve")
@@ -1147,13 +1143,6 @@ func TestAPIFetchUsesAbortController(t *testing.T) {
 	}
 }
 
-func TestAutoExecuteUsesWithBusy(t *testing.T) {
-	a := readWeb(t, "js/app.js")
-	if !strings.Contains(a, "getElementById('auto-execute')") {
-		t.Fatal("auto-execute handler missing")
-	}
-}
-
 func TestLongActionsDisableTheirButtons(t *testing.T) {
 	a := readWeb(t, "js/app.js")
 	if !strings.Contains(a, "function withBusy(") {
@@ -1183,7 +1172,7 @@ func TestLongActionsDisableTheirButtons(t *testing.T) {
 	if !strings.Contains(closeChunk, "withBusy") && !strings.Contains(closeChunk, ".disabled") {
 		t.Fatal("close position must disable the button while the order is in flight")
 	}
-	for _, id := range []string{"auto-execute", "auto-test-buy"} {
+	for _, id := range []string{"auto-test-buy"} {
 		start := strings.Index(a, "getElementById('"+id+"')")
 		if start < 0 {
 			t.Fatalf("%s handler not found", id)

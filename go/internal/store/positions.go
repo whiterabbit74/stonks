@@ -107,6 +107,69 @@ func normalizeBroker(b string) string {
 	}
 }
 
+// legColumn is the column prefix of a broker's leg.
+func legColumn(broker string) string {
+	if normalizeBroker(broker) == "robinhood" {
+		return "rh"
+	}
+	return "webull"
+}
+
+// SourceMonitor marks a position the monitoring opened by its own T-1 signal.
+//
+// Every row that is not a test buy is the monitoring's: its signal side —
+// opening, closing, prices, P&L — belongs to the monitoring alone, and a
+// broker fill only writes its own leg. A test row lives by its fills
+// (CORE §3, invariant I).
+const SourceMonitor = "monitor"
+
+// ErrMonitorPositionOpen refuses a second monitoring position.
+var ErrMonitorPositionOpen = errors.New("позиция мониторинга уже открыта")
+
+// OpenMonitorPosition records the monitoring's entry. "The monitoring holds
+// nothing" and the insert are one transaction, so two cycles racing cannot
+// leave it with two positions (invariant H).
+func (d *DB) OpenMonitorPosition(p Position) (*Position, error) {
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var one int
+	switch err := tx.QueryRow(`SELECT 1 FROM positions WHERE status='open' AND is_test=0 AND is_hidden=0 LIMIT 1`).Scan(&one); {
+	case err == nil:
+		return nil, ErrMonitorPositionOpen
+	case err != sql.ErrNoRows:
+		return nil, err
+	}
+	p.Symbol, p.Status, p.Source = SafeTicker(p.Symbol), "open", SourceMonitor
+	if err := insertMerged(tx, p); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// ExitRowFor finds the position a broker's sell belongs to: the one whose leg
+// at this broker still holds the ticker — open, or closed by the monitoring on
+// the sell's own trading day, before the fill arrived (invariant K.2). nil
+// means the shares were in nobody's leg: a leftover, not a position's exit.
+func (d *DB) ExitRowFor(symbol, broker, dateKey string) (*Position, error) {
+	col := legColumn(broker)
+	p, err := d.scanPosition(d.SQL.QueryRow(`SELECT `+positionColumns+` FROM positions
+		WHERE symbol=? AND `+col+`_qty > 0 AND (status='open' OR (is_test=0 AND exit_date=?))
+		ORDER BY status='open' DESC, entry_date DESC, id LIMIT 1`, SafeTicker(symbol), dateKey))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
 const positionColumns = `id, symbol, status,
 	entry_date, entry_price, entry_ibs, entry_decision_time,
 	exit_date, exit_price, exit_ibs, exit_decision_time,
@@ -429,10 +492,14 @@ func (d *DB) closePositionTx(tx *sql.Tx, id string, exit PositionExit) (*Positio
 	// A closed position holds nothing. The legs are normally already zeroed by
 	// ExitLeg, but a fill that covered the whole remainder and a manual close
 	// both land here with a leg still showing shares — read afterwards as a
-	// broker holding stock the journal has sold (invariant K.1, AUD-118).
+	// broker holding stock the journal has sold (AUD-118).
+	//
+	// Only for a test row. The monitoring's position closes on the signal,
+	// before any broker has sold, and its legs keep what the brokers still hold
+	// until their own fills write them (invariant K.1–K.2).
 	for _, broker := range []string{"webull", "robinhood"} {
 		leg := p.Leg(broker)
-		if !leg.Holds() {
+		if !leg.Holds() || !p.IsTest {
 			continue
 		}
 		leg.Qty = 0
@@ -541,7 +608,8 @@ func (d *DB) ExitLeg(id, broker, exitOrderID string, exitQty float64, exit Posit
 		return nil, false, err
 	}
 	p = &row
-	if row.Status == "open" && row.ExecutedQty() == 0 {
+	// The monitoring's position is closed by its signal, never by a fill.
+	if row.Status == "open" && row.ExecutedQty() == 0 && row.IsTest {
 		if p, err = d.closePositionTx(tx, id, exit); err != nil {
 			return nil, false, err
 		}
@@ -553,18 +621,17 @@ func (d *DB) ExitLeg(id, broker, exitOrderID string, exitQty float64, exit Posit
 }
 
 // exitLegTx zeroes one broker's leg and records what it got, in one statement.
+// The monitoring's position takes it closed too: the signal closed the row
+// before the broker sold (invariant K.2).
 func exitLegTx(tx *sql.Tx, id, broker string, exitPrice float64, exitOrderID string) error {
-	col := "webull"
-	if normalizeBroker(broker) == "robinhood" {
-		col = "rh"
-	}
+	col := legColumn(broker)
 	var price any
 	if exitPrice > 0 {
 		price = exitPrice
 	}
 	_, err := tx.Exec(`UPDATE positions
 		SET `+col+`_qty=0, `+col+`_exit_price=COALESCE(?, `+col+`_exit_price), `+col+`_exit_order_id=COALESCE(?, `+col+`_exit_order_id)
-		WHERE id=? AND status='open'`, price, nullText(exitOrderID), id)
+		WHERE id=? AND (status='open' OR is_test=0)`, price, nullText(exitOrderID), id)
 	return err
 }
 
@@ -715,6 +782,22 @@ func (d *DB) ClaimPartialExit(clientOrderID, positionID, broker string, filled f
 	}
 	if err != nil {
 		return 0, err
+	}
+	if !p.IsTest {
+		// The monitoring's row is not split by fills: its P&L is the signal's.
+		// The leg shrinks by the new part and the rest stays visible as unsold
+		// (invariant K.3).
+		col := legColumn(broker)
+		var price any
+		if exit.Price > 0 {
+			price = exit.Price
+		}
+		if _, err := tx.Exec(`UPDATE positions SET `+col+`_qty=MAX(`+col+`_qty-?, 0),
+			`+col+`_exit_price=COALESCE(?, `+col+`_exit_price), `+col+`_exit_order_id=? WHERE id=?`,
+			newly, price, nullText(clientOrderID), positionID); err != nil {
+			return 0, err
+		}
+		return newly, tx.Commit()
 	}
 	if p.Quantity-newly <= 1e-9 {
 		// The exit took the whole remainder: the leg is flat and it is this
@@ -894,9 +977,10 @@ func (d *DB) AttachEntry(f EntryFill) (*Position, error) {
 	if normalizeBroker(f.Broker) == "robinhood" {
 		other = p.Webull
 	}
-	if !other.Executed() {
-		// The row is this broker's alone, so its entry price is this leg's:
-		// the P&L is taken from it.
+	if !other.Executed() && p.Source != SourceMonitor {
+		// The row is this broker's alone, so its entry price is this leg's.
+		// A position the monitoring opened keeps its signal price: the fill is
+		// the leg's fact, not the strategy's.
 		p.EntryPrice = leg.EntryPrice
 	}
 

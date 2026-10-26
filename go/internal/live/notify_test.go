@@ -51,13 +51,16 @@ func TestTrackerNoticeText(t *testing.T) {
 	}
 }
 
-// The day's MSFT exit: Robinhood fills first, Webull closes the position. The
-// result goes out once, after the fill line that closed it.
+// The day's MSFT exit: the monitoring closed the position on its signal, then
+// Robinhood sells first and Webull sells its last leg. The result goes out
+// once, after the fill line of that last leg.
 func TestPositionCloseSendsResultAfterLastFill(t *testing.T) {
 	e, _, _ := dualBrokerEngine(t, nil)
 	tg := e.Telegram.(*MemoryTelegram)
-	p := store.Position{ID: "msft", Symbol: "MSFT", Status: "open", EntryDate: "2026-10-06",
-		EntryPrice: store.Ptr(529.5), Quantity: 4, Source: "telegram_t1"}
+	p := store.Position{ID: "msft", Symbol: "MSFT", Status: "closed", EntryDate: "2026-10-06",
+		EntryPrice: store.Ptr(529.5), Quantity: 4, Source: store.SourceMonitor,
+		ExitDate: "2026-10-09", ExitPrice: store.Ptr(535.2), HoldingDays: store.Ptr[int64](3),
+		PnLAbsolute: store.Ptr(22.8), PnLPercent: store.Ptr(1.076)}
 	p.SetLeg("webull", store.BrokerLeg{Qty: 3, EntryPrice: store.Ptr(529.48), EntryOrderID: "wb-in"})
 	p.SetLeg("robinhood", store.BrokerLeg{Qty: 1, EntryPrice: store.Ptr(529.5), EntryOrderID: "rh-in"})
 	if err := e.DB.SavePosition(p); err != nil {
@@ -73,7 +76,7 @@ func TestPositionCloseSendsResultAfterLastFill(t *testing.T) {
 	}
 	exit("rh-out", "robinhood", 1, 535.12)
 	if body := telegramBody(t, e); strings.Contains(body, "закрыта") {
-		t.Fatalf("one broker out is not a closed position:\n%s", body)
+		t.Fatalf("one leg sold is not the result yet:\n%s", body)
 	}
 	exit("wb-out", "webull", 3, 535.14)
 
@@ -155,8 +158,8 @@ func exitReentryEngine(t *testing.T, telegram TelegramSender) *Engine {
 	return e
 }
 
-// T-1 with an exit and a same-day re-entry: the decision reaches the chat
-// first, then the fill and the result, then the re-entry.
+// T-1 with an exit and a same-day re-entry: the monitoring's decision reaches
+// the chat first, then the fill and the result, then what autotrade did.
 func TestT1DecisionGoesOutBeforeFills(t *testing.T) {
 	tg := &MemoryTelegram{}
 	// A slow decision send leaves the fill every chance to overtake it, as
@@ -178,17 +181,19 @@ func TestT1DecisionGoesOutBeforeFills(t *testing.T) {
 		t.Fatalf("no message with %q:\n%s", want, sentBody(tg))
 		return -1
 	}
-	decision, sold, closed, reentry := at("1 минута до закрытия"), at("продано 7 AAPL"), at("AAPL закрыта:"), at("🔁 После выхода")
-	if !(decision < sold && sold < closed && closed < reentry) {
-		t.Fatalf("order decision=%d sold=%d closed=%d reentry=%d:\n%s", decision, sold, closed, reentry, sentBody(tg))
+	decision, sold, closed, auto := at("1 минута до закрытия"), at("продано 7 AAPL"), at("AAPL закрыта:"), at("АВТОТОРГОВЛЯ")
+	if !(decision < sold && sold < closed && closed < auto) {
+		t.Fatalf("order decision=%d sold=%d closed=%d auto=%d:\n%s", decision, sold, closed, auto, sentBody(tg))
 	}
-	if first := tg.Sent()[decision][1]; !strings.Contains(first, "Закрываем AAPL") || strings.Contains(first, "Открываем MSFT") {
-		t.Fatalf("the decision message reports the exit, the re-entry comes later:\n%s", first)
+	// The monitoring's half goes out first and names no order; autotrade's
+	// half follows with what the broker did.
+	if first := tg.Sent()[decision][1]; !strings.Contains(first, "Выход AAPL") || !strings.Contains(first, "Вход MSFT") || strings.Contains(first, "MARKET") {
+		t.Fatalf("the decision message is the monitoring's:\n%s", first)
 	}
-	if follow := tg.Sent()[reentry][1]; !strings.Contains(follow, "Открываем MSFT") {
-		t.Fatalf("follow-up must report the re-entry:\n%s", follow)
+	if follow := tg.Sent()[auto][1]; !strings.Contains(follow, "Webull: SELL AAPL MARKET отправлен") || !strings.Contains(follow, "Webull: BUY MSFT MARKET отправлен") {
+		t.Fatalf("the follow-up must report the broker's orders:\n%s", follow)
 	}
-	if !strings.Contains(res.Text, "Закрываем AAPL") || !strings.Contains(res.Text, "Открываем MSFT") {
+	if !strings.Contains(res.Text, "Выход AAPL") || !strings.Contains(res.Text, "BUY MSFT") {
 		t.Fatalf("the run's text keeps both parts:\n%s", res.Text)
 	}
 	if again, _ := e.Aggregate(1, AggregateOpts{ForceSend: true, UpdateState: true}); again.Reason != "already_sent" {
@@ -212,11 +217,13 @@ func TestT1DecisionSendFailureFallsBackToFullReport(t *testing.T) {
 			report = m[1]
 		}
 	}
-	if !strings.Contains(report, "Закрываем AAPL") || !strings.Contains(report, "Открываем MSFT") {
-		t.Fatalf("full report must carry the decision and the re-entry:\n%s", sentBody(tg))
+	if !strings.Contains(report, "Выход AAPL") || !strings.Contains(report, "Вход MSFT") || !strings.Contains(report, "BUY MSFT") {
+		t.Fatalf("full report must carry the decision and the orders:\n%s", sentBody(tg))
 	}
-	if strings.Contains(sentBody(tg), "🔁 После выхода") {
-		t.Fatal("a follow-up without its decision makes no sense")
+	for _, m := range tg.Sent() {
+		if strings.Contains(m[1], "АВТОТОРГОВЛЯ") && !strings.Contains(m[1], "1 минута до закрытия") {
+			t.Fatal("a follow-up without its decision makes no sense")
+		}
 	}
 	if !strings.Contains(autotradeLogText(t, e), "event=notify_failed") {
 		t.Fatal("the failed decision send must be logged")

@@ -213,7 +213,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PATCH /api/autotrade/config", wrap(s.handleAutoConfigPatch))
 	s.mux.HandleFunc("GET /api/autotrade/status", wrap(s.handleAutoStatus))
 	s.mux.HandleFunc("POST /api/autotrade/evaluate", wrap(s.handleAutoEvaluate))
-	s.mux.HandleFunc("POST /api/autotrade/execute", wrap(s.handleAutoExecute))
 	s.mux.HandleFunc("GET /api/autotrade/webull/account", wrap(s.handleWebullAccount))
 	s.mux.HandleFunc("GET /api/autotrade/webull/dashboard", wrap(s.handleWebullDashboard))
 	s.mux.HandleFunc("GET /api/autotrade/logs", wrap(s.handleAutoLogs))

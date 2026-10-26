@@ -7,12 +7,13 @@ import (
 	"mktorder.com/go/internal/types"
 )
 
-// AUD-068: оба брокера держат один тикер. Выход у Webull закрывает ногу Webull
-// и не трогает Robinhood — позиция остаётся открытой, пока держит второй.
+// AUD-068: оба брокера держат один тикер. Мониторинг закрывает позицию своим
+// сигналом; продажа Webull закрывает ногу Webull и не трогает Robinhood, у
+// которого выходы выключены, — его нога честно показывает непроданное.
 //
 // Раньше это были две отдельные строки журнала на брокера, и выход одного мог
 // закрыть строку другого. Теперь строка одна, а ноги две, так что перепутать
-// нечего: проверяем, что закрывается именно нога вышедшего брокера.
+// нечего: проверяем, что закрывается именно нога продавшего брокера.
 func TestExitClosesOwnLegInMultiBroker(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 12, Volume: 1}}
 	db, e, wb := testEngine(t, bars)
@@ -60,9 +61,7 @@ func TestExitClosesOwnLegInMultiBroker(t *testing.T) {
 	if p.Robinhood.Qty != 42 {
 		t.Fatalf("robinhood leg must be untouched: %+v", p.Robinhood)
 	}
-	// Позиция всё ещё наши деньги в рынке: закрывать её нельзя, пока держит
-	// второй брокер.
-	if p.Status != "open" {
-		t.Fatalf("position must stay open while robinhood holds it: %+v", p)
+	if p.Status != "closed" || p.ExitPrice == nil || *p.ExitPrice != 12 {
+		t.Fatalf("the monitoring closes its position on the signal: %+v", p)
 	}
 }

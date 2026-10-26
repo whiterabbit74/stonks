@@ -1954,7 +1954,7 @@ func (d *DB) GetWebullToken() WebullTokenRow {
 }
 
 // UpsertWebullHealth records the classified health status (OK/NEEDS_REAUTH/
-// MISSING/UNREACHABLE/EXPIRING_SOON — the vocabulary CanSubmit/executeAll gate
+// MISSING/UNREACHABLE/EXPIRING_SOON — the vocabulary CanSubmit and the cycle gate
 // on) plus the raw word Webull's check actually returned, and marks today's
 // scheduled health check as done. See SaveWebullTokenChecked.
 func (d *DB) UpsertWebullHealth(todayET, status, raw, attemptAt string) error {

@@ -148,20 +148,6 @@ func (e *Engine) evalLive(cfg map[string]any) bool {
 	return asBool(cfg["enabled"]) && e.anyBrokerLive(cfg)
 }
 
-func anyAllow(cfg map[string]any, key string) bool {
-	if allowFlag(cfg, key) {
-		return true
-	}
-	brokers, _ := cfg["brokers"].(map[string]any)
-	for _, v := range brokers {
-		b, _ := v.(map[string]any)
-		if asBool(b["enabled"]) && asBool(b[key]) {
-			return true
-		}
-	}
-	return false
-}
-
 type namedBroker struct {
 	name string
 	br   Broker

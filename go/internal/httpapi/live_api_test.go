@@ -91,7 +91,7 @@ func TestLivePathsAreNotJsonOKStubs(t *testing.T) {
 		t.Fatalf("confirmations %v", sim)
 	}
 	text, _ := sim["text"].(string)
-	if !strings.Contains(text, "РЕШЕНИЕ") || !strings.Contains(text, "AAPL") {
+	if !strings.Contains(text, "МОНИТОРИНГ") || !strings.Contains(text, "AAPL") {
 		t.Fatalf("T-1 decision text missing: %s", rec.Body.String())
 	}
 	if sim["dryRun"] != true {
@@ -147,18 +147,9 @@ func TestLivePathsAreNotJsonOKStubs(t *testing.T) {
 		t.Fatalf("token status %s", rec.Body.String())
 	}
 
-	rec = postJSON(s, "/api/autotrade/execute", map[string]any{})
-	body := rec.Body.String()
-	if strings.Contains(body, "live orders disabled in local Go rewrite") {
-		t.Fatalf("execute still stub: %s", body)
-	}
-	if rec.Code != 200 {
-		t.Fatalf("execute %d %s", rec.Code, body)
-	}
-	var ex map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &ex)
-	if ex["executed"] != true {
-		t.Fatalf("expected submitted execute, got %s", body)
+	// The cycle runs at T-1 only; there is no HTTP execute any more.
+	if res := s.Live.Execute("telegram_t1"); !res.Executed {
+		t.Fatalf("expected submitted cycle, got %+v", res.Runs)
 	}
 	if len(br.Orders) == 0 {
 		t.Fatal("broker PlaceMarket not called")
@@ -389,10 +380,7 @@ func TestSimulateSplitJumpAndEmaAndFillPoll(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
-	rec = postJSON(s, "/api/autotrade/execute", map[string]any{})
-	if rec.Code != 200 {
-		t.Fatalf("execute %d %s", rec.Code, rec.Body.String())
-	}
+	s.Live.Execute("telegram_t1")
 	if len(br.Orders) == 0 {
 		t.Fatal("expected order to poll")
 	}

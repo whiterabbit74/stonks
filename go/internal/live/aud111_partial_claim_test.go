@@ -22,7 +22,7 @@ func TestPartialFillSurvivesJournalWriteFailure(t *testing.T) {
 	e.Now = nearCloseNow()
 	if err := db.SavePosition(store.Position{
 		ID: "p", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20",
-		EntryPrice: store.Ptr(10.0), Quantity: 10,
+		EntryPrice: store.Ptr(10.0), Quantity: 10, IsTest: true, // lives by its fills
 		Webull: store.BrokerLeg{Qty: 10, EntryPrice: store.Ptr(10.0)},
 	}); err != nil {
 		t.Fatal(err)

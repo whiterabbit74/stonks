@@ -821,17 +821,15 @@ const exitFillWaitAttempts = 10
 var exitFillWaitStep = 500 * time.Millisecond
 
 // exitBookWaitAttempts bounds the wait for the broker's own position feed to
-// catch up with a filled exit. The journal closes the moment the fill is
-// confirmed, but /account/positions can still list the sold shares for a
-// second or two — and a stale book is read as a live position: booksForHeld
-// synthesises an open trade out of it and the re-entry pass sells the same
-// shares a second time, instead of opening the day's next position (AUD-071).
+// catch up with a filled sell. /account/positions can still list the sold
+// shares for a second or two, and an entry checks that very book for being
+// empty (AUD-071).
 const exitBookWaitAttempts = 6
 
 // awaitBrokerBooksFlat waits for each named broker's own position feed to stop
 // reporting the shares it just sold. Best effort: when the feed does not catch
-// up in the budget, the caller proceeds and the ordinary guards
-// (broker_position_exists) hold — no order is sent on a guess. Brokers are
+// up in the budget, the entry finds the book not empty and is skipped
+// (broker_not_flat) — no order is sent on a guess. Brokers are
 // polled concurrently, so Webull's lag never delays Robinhood.
 func (e *Engine) awaitBrokerBooksFlat(w execWindow, brokers []string) {
 	var wg sync.WaitGroup
@@ -860,62 +858,6 @@ func (e *Engine) awaitBrokerBooksFlat(w execWindow, brokers []string) {
 		}(name, br)
 	}
 	wg.Wait()
-}
-
-// awaitFlatAfterExit polls the pending exit until the broker journal reports
-// no open trade. "Flat" is the same condition Evaluate uses to allow an entry,
-// so a true return means the re-entry decision sees the position as gone.
-func (e *Engine) awaitFlatAfterExit(brokers []string) bool {
-	for attempt := 0; attempt < exitFillWaitAttempts; attempt++ {
-		// An unreadable journal is not a flat account: treating the read
-		// failure as "no open trade" would let the re-entry fire on top of a
-		// position that may still be open.
-		if flat, err := e.journalFlat(brokers); err == nil && flat {
-			return true
-		}
-		t, err := e.pendingExitFor(brokers)
-		if err != nil || t == nil {
-			// Nothing left to wait on: the tracker reached a terminal status
-			// that did not close the trade (rejected, cancelled, expired).
-			// A DB error is not a vanished tracker; do not re-enter on it.
-			return false
-		}
-		// Poll here rather than waiting on trackerWheel's own backoff.
-		e.pollOneTracker(t)
-		e.sleep(exitFillWaitStep)
-	}
-	flat, err := e.journalFlat(brokers)
-	return err == nil && flat
-}
-
-// journalFlat reports whether the broker journal has no open trade on the
-// brokers that just exited. An empty list means "any broker". Scoping matters
-// in multi-broker mode: a position still held on another broker is not this
-// broker's exit failing to fill (AUD-043). The error is the point: a failed
-// read must never be read as flat.
-func (e *Engine) journalFlat(brokers []string) (bool, error) {
-	rows, err := e.DB.OpenPositions()
-	if err != nil {
-		e.logAuto("journal_read_failed", "", map[string]any{"op": "await_flat", "error": err.Error()})
-		return false, err
-	}
-	if len(brokers) == 0 {
-		// Unscoped: any broker still holding anything counts.
-		for _, p := range rows {
-			if p.Webull.Holds() || p.Robinhood.Holds() {
-				return false, nil
-			}
-		}
-		return true, nil
-	}
-	for _, b := range brokers {
-		for _, p := range rows {
-			if p.Leg(b).Holds() {
-				return false, nil
-			}
-		}
-	}
-	return true, nil
 }
 
 // pendingExitFor returns the first unfilled exit tracker on the given brokers.

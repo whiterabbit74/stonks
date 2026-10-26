@@ -56,7 +56,7 @@ func TestAUD023UnreadableJournalIsNotFlatInMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows := []t1Watch{{sym: "AAPL", eval: watchEval{ok: true, ibs: 0.5, price: 10}}}
-	t1 := e.buildT1Text(1, rows, nil, false, false, EvalResult{}, EvalResult{}, nil)
+	t1 := e.buildT1MonitorText(1, rows, EvalResult{}, nil, false)
 	if !strings.Contains(t1, "Позиция: неизвестна") {
 		t.Fatalf("T-1 must not claim a flat book on an unreadable journal:\n%s", t1)
 	}

@@ -136,10 +136,9 @@ func TestExecuteSingleBrokerIgnoresOtherBrokerAllow(t *testing.T) {
 	}
 }
 
-// e.Broker is nil (no Webull creds), only Robinhood is attached, and
-// broker_trades already has an open Robinhood position. The books must be
-// looked up by broker name, not hard-coded to "webull" — otherwise the
-// engine would see no open position and enter right on top of it.
+// e.Broker is nil (no Webull creds), only Robinhood is attached, and the
+// monitoring holds AAPL. Holding, it enters nothing — so nothing is bought on
+// top of the position.
 func TestExecuteRobinhoodOnlySeesItsOwnOpenPosition(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, _ := testEngine(t, bars)
@@ -156,16 +155,16 @@ func TestExecuteRobinhoodOnlySeesItsOwnOpenPosition(t *testing.T) {
 		},
 	})
 	res := e.Execute("t1")
-	action, _ := res.BrokerDecisions["robinhood"]["action"].(string)
-	if action != "none" {
-		t.Fatalf("must not enter over the existing robinhood position: decision=%+v", res.BrokerDecisions["robinhood"])
+	if res.Monitor.Reason != "exit_threshold_not_reached" || res.Monitor.Entry != nil {
+		t.Fatalf("the monitoring holds AAPL and enters nothing: %+v", res.Monitor)
 	}
 	if res.Executed || len(rh.Orders) != 0 {
 		t.Fatalf("no order should have been submitted: %+v orders=%d", res, len(rh.Orders))
 	}
 }
 
-// No broker configured at all: Execute must not panic and must report "none".
+// No broker configured at all: the cycle must not panic, the monitoring still
+// decides, and autotrade says it has nobody to send to.
 func TestExecuteNoBrokerConfigured(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	_, e, _ := testEngine(t, bars)
@@ -177,11 +176,11 @@ func TestExecuteNoBrokerConfigured(t *testing.T) {
 	if res.Executed {
 		t.Fatalf("must not report executed with no broker: %+v", res)
 	}
-	if action, _ := res.Decision["action"].(string); action != "none" {
-		t.Fatalf("want action=none, got %+v", res.Decision)
+	if res.Monitor.Opened == nil {
+		t.Fatalf("the monitoring enters without any broker: %+v", res.Monitor)
 	}
-	if reason, _ := res.Decision["reason"].(string); reason != "no_broker_configured" {
-		t.Fatalf("want reason=no_broker_configured, got %+v", res.Decision)
+	if text := t1AutoText(res, false); !strings.Contains(text, "брокер не настроен") {
+		t.Fatalf("the report must say there is no broker:\n%s", text)
 	}
 	if !hasAutotradeLog(t, e, "event=execution_skipped") || !hasAutotradeLog(t, e, "reason=no_broker_configured") {
 		t.Fatal("want the no_broker_configured skip logged")

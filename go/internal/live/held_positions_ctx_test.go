@@ -50,17 +50,17 @@ func TestAggregateT1HonoursCallerContextOnPositionsRead(t *testing.T) {
 	}
 }
 
-func TestExecuteWindowCancelsEvaluatePositionsRead(t *testing.T) {
+func TestCycleCancelsPositionsRead(t *testing.T) {
 	_, e, _ := testEngine(t, nil)
 	e.Sleep = func(time.Duration) {}
 	e.Broker = &hangPositionsBroker{}
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	w := execWindow{ctx: context.Background(), deadline: e.now().Add(-time.Second)}
 	start := time.Now()
-	_ = e.executeWindow(w, "telegram_t1")
+	_ = e.runCycle(w, "telegram_t1", false, nil)
 	elapsed := time.Since(start)
 	if elapsed > time.Second {
-		t.Fatalf("executeWindow took %s; Evaluate must use the execution window, not hang on positions", elapsed)
+		t.Fatalf("the cycle took %s; the book read must use the execution window, not hang on positions", elapsed)
 	}
 }
 

@@ -45,7 +45,7 @@ func TestT1SaysWhyEveryBrokerWasSkipped(t *testing.T) {
 	if strings.Contains(res.Text, "Действий нет") {
 		t.Fatalf("a skipped run must not read as no-action:\n%s", res.Text)
 	}
-	for _, want := range []string{"Webull:", "Robinhood:", "незакрытая заявка"} {
+	for _, want := range []string{"Webull: по AAPL уже висит незакрытая заявка", "Robinhood: по AAPL уже висит незакрытая заявка"} {
 		if !strings.Contains(res.Text, want) {
 			t.Fatalf("want %q in the T-1 text:\n%s", want, res.Text)
 		}

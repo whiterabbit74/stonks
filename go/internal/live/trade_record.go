@@ -180,11 +180,21 @@ func (e *Engine) recordEntryFill(symbol, clientOrderID, brokerName, source, date
 	return true
 }
 
-// recordExitFill closes this broker's leg, and the position itself once no
-// broker holds shares any more. A position half-exited (one broker out, the
-// other still in) stays open on purpose: it is still our money at risk.
+// exitRowFor is the position a sell belongs to: the one whose leg at this
+// broker holds the ticker (invariant K.2). nil is a leftover.
+func (e *Engine) exitRowFor(symbol, broker, dateKey string) (*store.Position, error) {
+	p, err := e.DB.ExitRowFor(symbol, broker, dateKey)
+	if err != nil {
+		e.logAuto("journal_read_failed", "", map[string]any{"op": "exit_row_for", "symbol": symbol, "broker": broker, "error": err.Error()})
+	}
+	return p, err
+}
+
+// recordExitFill writes this broker's sell into its leg. A test row also
+// closes once no broker holds it; a monitoring position is closed by its own
+// signal and only gets the leg (invariant K.1–K.2).
 func (e *Engine) recordExitFill(symbol, clientOrderID, brokerName, dateKey string, fillQty, fillPrice float64, exitIBS *float64, meta orderMeta) bool {
-	p, err := e.openPositionFor(symbol, clientOrderID, brokerName)
+	p, err := e.exitRowFor(symbol, brokerName, dateKey)
 	if err != nil {
 		e.logAuto("local_trade_close_failed", meta.CorrelationID, map[string]any{
 			"symbol": symbol, "clientOrderId": clientOrderID, "error": err.Error(),
@@ -193,7 +203,7 @@ func (e *Engine) recordExitFill(symbol, clientOrderID, brokerName, dateKey strin
 		return false
 	}
 	if p == nil {
-		e.exitWithoutPosition(symbol, clientOrderID, brokerName, fillQty, meta.CorrelationID)
+		e.leftoverSold(symbol, clientOrderID, brokerName, fillQty, fillPrice, meta.CorrelationID)
 		return true
 	}
 
@@ -213,13 +223,20 @@ func (e *Engine) recordExitFill(symbol, clientOrderID, brokerName, dateKey strin
 		})
 		return true
 	}
-	if after.Status == "open" {
+	if !after.IsTest {
+		e.logAuto("position_leg_exited", meta.CorrelationID, map[string]any{
+			"symbol": symbol, "broker": brokerName, "positionId": after.ID, "price": fillPrice,
+		})
+	} else if after.Status == "open" {
 		e.logAuto("position_partially_exited", meta.CorrelationID, map[string]any{
 			"symbol": symbol, "broker": brokerName, "remaining": after.ExecutedQty(),
 		})
-	} else if after.Status == "closed" {
-		// Sent by finalizeTrackerStatus after this fill's own line, so the
-		// result follows the "продано" it comes from.
+	}
+	// The result goes out once the position is closed and its last leg sold:
+	// the monitoring's P&L next to what each broker got. Sent by
+	// finalizeTrackerStatus after this fill's own line, so it follows the
+	// "продано" it comes from.
+	if after.Status == "closed" && after.ExecutedQty() == 0 {
 		e.mu.Lock()
 		if e.closeNotices == nil {
 			e.closeNotices = map[string]string{}
@@ -290,29 +307,23 @@ func signedPct(v float64) string {
 	return fmt.Sprintf("+%.2f%%", v)
 }
 
-// exitWithoutPosition handles an exit fill, full or partial, that found no
-// open position to close.
-func (e *Engine) exitWithoutPosition(symbol, clientOrderID, brokerName string, fillQty float64, corr string) {
+// leftoverSold handles a sell, full or partial, that is in nobody's leg: a
+// leftover the account cleanup sold, or a ticker bought by hand. It is not a
+// position's exit, so it goes to the log with what it got and raises no alarm
+// (invariant K.4).
+func (e *Engine) leftoverSold(symbol, clientOrderID, brokerName string, fillQty, fillPrice float64, corr string) {
 	if fillQty > 0 && e.DB.RecordedFillQty(clientOrderID) >= fillQty-1e-9 {
-		// This very fill is already in the journal, and the position it
-		// closed is closed. A repeat of the broker answer is routine
-		// (AUD-115) — not an alarm.
+		// This very fill is already booked into a leg; a repeat of the broker
+		// answer is routine (AUD-115).
 		e.logAuto("exit_fill_already_recorded", corr, map[string]any{
 			"symbol": symbol, "clientOrderId": clientOrderID, "broker": brokerName,
 		})
 		return
 	}
-	// An exit fill with nothing to close used to return silently, so an
-	// exit resolved before its own entry (the operator confirming two
-	// trackers out of order) left the entry's position open forever with
-	// not a word to anybody. Say it out loud instead — for a partial fill
-	// too (AUD-132).
-	e.logAuto("exit_fill_without_open_position", corr, map[string]any{
+	e.logAuto("leftover_sold", corr, map[string]any{
 		"symbol": symbol, "clientOrderId": clientOrderID, "broker": brokerName,
+		"quantity": fillQty, "price": fillPrice,
 	})
-	_ = e.Send(e.chat(), fmt.Sprintf(
-		"<b>%s: выход без открытой позиции</b>\n%s\nзаявка: %s\nв журнале нечего закрывать — проверьте позицию у брокера",
-		brokerLabel(brokerName), symbol, clientOrderID))
 }
 
 // warnOnSlippage compares the executed price with the quote the decision was
@@ -362,7 +373,7 @@ func (e *Engine) reduceOpenQuantity(symbol, preferID, broker, dateKey string, fi
 	if !(filled > 0) {
 		return true
 	}
-	p, err := e.openPositionFor(symbol, preferID, broker)
+	p, err := e.exitRowFor(symbol, broker, dateKey)
 	if err != nil {
 		e.logAuto("local_trade_close_failed", corr, map[string]any{
 			"symbol": symbol, "clientOrderId": preferID,
@@ -372,7 +383,7 @@ func (e *Engine) reduceOpenQuantity(symbol, preferID, broker, dateKey string, fi
 		return false
 	}
 	if p == nil {
-		e.exitWithoutPosition(symbol, preferID, broker, filled, corr)
+		e.leftoverSold(symbol, preferID, broker, filled, exitPrice, corr)
 		return true
 	}
 	newly, err := e.DB.ClaimPartialExit(preferID, p.ID, broker, filled, store.PositionExit{

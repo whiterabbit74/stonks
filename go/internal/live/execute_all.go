@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"html"
-	"sort"
 	"strings"
 	"sync"
 
@@ -21,259 +20,334 @@ func (e *Engine) storedHealthStatus(name string) string {
 	return strings.ToUpper(strings.TrimSpace(e.DB.GetWebullToken().LastCheckStatus))
 }
 
-func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, snaps []namedBroker) EvalResult {
-	if len(snaps) == 0 {
-		ev.Decision = map[string]any{"action": "none", "reason": "no_broker_configured", "symbol": nil, "candidate": nil}
-		ev.Executed = false
-		ev.Submitted = false
-		ev.Phase = "decision"
-		e.logAuto("execution_skipped", corr, map[string]any{"reason": "no_broker_configured"})
-		e.mu.Lock()
-		e.lastResult = ev
-		e.mu.Unlock()
+// The T-1 cycle in two layers (CORE §3). The monitoring decides on its own and
+// writes the decision to the journal before any broker is asked anything; then
+// autotrade — only when it is switched on — follows that one decision at every
+// broker, each broker on its own.
+
+// MonitorStep is what the monitoring did in one cycle.
+type MonitorStep struct {
+	Held   *store.Position `json:"held,omitempty"`   // its position at the start of the cycle
+	Exit   *LiveQuote      `json:"exit,omitempty"`   // the reading it exited on
+	Closed *store.Position `json:"closed,omitempty"` // the row as that exit closed it
+	Entry  *LiveQuote      `json:"entry,omitempty"`  // the reading it entered on
+	Opened *store.Position `json:"opened,omitempty"` // the row that entry opened
+	// Reason is why its last decision of the cycle was "none"; Failed is the
+	// journal write that failed, which means the decision did not happen.
+	Reason string `json:"reason,omitempty"`
+	Failed string `json:"failed,omitempty"`
+}
+
+func (m *MonitorStep) acted() bool { return m != nil && (m.Exit != nil || m.Entry != nil) }
+
+// BrokerRun is what autotrade did at one broker in one cycle: the account
+// cleanup's sells, the entry's buy, and why it stopped short when it did.
+type BrokerRun struct {
+	Sells   []OrderResult `json:"sells,omitempty"`
+	Buy     *OrderResult  `json:"buy,omitempty"`
+	Reason  string        `json:"reason,omitempty"`
+	Symbols []string      `json:"symbols,omitempty"` // the tickers behind Reason
+}
+
+func autotradeOn(cfg map[string]any) bool { return asBool(cfg["enabled"]) }
+
+// runCycle is one cycle: the monitoring's decision, then autotrade following
+// it. decided, when set, is called with the monitoring's result before any
+// broker is asked anything. dry decides and writes nothing.
+func (e *Engine) runCycle(w execWindow, trigger string, dry bool, decided func(EvalResult)) EvalResult {
+	corr := newCorrelationID()
+	ev := e.EvaluateWindow(w)
+	if w.ctx != nil && w.ctx.Err() != nil {
+		// The process is stopping: the cycle did not run, and nothing is
+		// written on its behalf.
+		ev.Monitor = &MonitorStep{Held: ev.OpenTrade, Reason: "cycle_cancelled"}
 		return ev
 	}
-	results := map[string]any{}
-	decisions := map[string]map[string]any{}
-	anyOK := false
-	rows, journalErr := e.DB.ListPositions()
-	// Брокеры идут параллельно, а не по очереди: последовательный цикл отдавал
-	// Robinhood остаток закрывающей минуты только после того, как Webull
-	// доработает свои таймауты и повторы. Общее здесь — эти три переменные под
-	// out и БД, которая сериализует записи сама (AUD-074).
-	var out sync.Mutex
-	var wg sync.WaitGroup
-	for _, nb := range snaps {
-		if nb.br == nil {
-			continue
-		}
-		wg.Add(1)
-		go func(name string, br Broker) {
-			defer wg.Done()
-			defer func() {
-				if rec := recover(); rec != nil {
-					// Паника одного брокера не должна забирать с собой второго.
-					e.logAuto("broker_execution_panic", corr, map[string]any{"broker": name, "error": fmt.Sprint(rec)})
-					// Пропуск без названной причины запрещён (§15 CORE): без
-					// этого решения брокер исчезал из отчёта T-1 совсем
-					// (AUD-114).
-					out.Lock()
-					defer out.Unlock()
-					if decisions[name] == nil {
-						decisions[name] = map[string]any{"action": "none", "reason": "broker_panic"}
-					}
-				}
-			}()
-			decision, brokerRes, executed := e.executeOneBroker(w, ev, trigger, corr, name, br, rows, journalErr)
-			out.Lock()
-			defer out.Unlock()
-			if decision != nil {
-				decisions[name] = decision
-			}
-			if brokerRes != nil {
-				results[name] = brokerRes
-			}
-			if executed {
-				anyOK = true
-			}
-		}(nb.name, nb.br)
+	mon := e.applyMonitor(ev, dry, corr)
+	ev.Monitor = &mon
+	if decided != nil {
+		decided(ev)
 	}
-	wg.Wait()
-	e.closeUnheldBySignal(ev, w, corr)
-	// Always name-keyed so a single-broker submit (Robinhood-only T-1) is not
-	// mistaken for Webull when execOutcomes sees a bare OrderResult.
-	ev.Broker = results
-	ev.BrokerDecisions = decisions
-	ev.Executed = anyOK
-	ev.Submitted = anyOK
-	if anyOK {
-		ev.Phase = "submitted"
-	} else {
-		ev.Phase = "decision"
+	if !dry && mon.acted() {
+		if autotradeOn(ev.AutoTrading) {
+			e.follow(w, &ev, trigger, corr)
+		} else {
+			e.logAuto("execution_skipped", corr, map[string]any{"reason": "autotrading_disabled"})
+		}
 	}
 	e.mu.Lock()
+	e.lastRunAt = ev.EvaluatedAt
 	e.lastResult = ev
 	e.mu.Unlock()
 	return ev
 }
 
-// closeUnheldBySignal записывает выход мониторинга в журнал по позиции,
-// которой нет ни в одной книге брокера.
-//
-// Журнал — это сигнальная сторона сделки (§Журнал CORE): цена выхода — чтение
-// T-1, на котором принято решение, а не филл. Закрывала строку только запись
-// филла, поэтому позиция, которую никто не исполнил (автоторговля выключена,
-// бумага продана руками), висела открытой навсегда: выход не записывался, а
-// открытая строка блокировала все последующие входы.
-//
-// Условие намеренно узкое — бумагу не держит никто и по ней ничего не летит, —
-// значит филла по ней не будет и ни одна запись исполнения с этой не
-// разойдётся. Держит брокер (пусть и с выключенной отправкой) — строку
-// закрывает его филл, как раньше.
-func (e *Engine) closeUnheldBySignal(ev EvalResult, w execWindow, corr string) {
-	if e == nil || e.DB == nil || ev.TodayKey == "" {
-		return
-	}
-	// Свежий снимок: филл соседнего брокера мог закрыть строку в этом же цикле.
-	rows, err := e.DB.ListPositions()
-	if err != nil {
-		e.logAuto("journal_read_failed", corr, map[string]any{"op": "close_unheld", "error": err.Error()})
-		return
-	}
-	// Незавершённая заявка владеет выходом по своему тикеру: её филл допишет
-	// ногу и закроет строку сам. Закрыть строку сигналом раньше филла — значит
-	// отправить этот филл в exitWithoutPosition и потерять цену исполнения.
-	// Нечитаемая таблица трекеров — тоже «не закрываем».
-	pending, err := e.DB.ListPendingTrackers()
-	if err != nil {
-		e.logAuto("journal_read_failed", corr, map[string]any{
-			"table": "order_trackers", "op": "close_unheld", "error": err.Error(),
-		})
-		return
-	}
-	inFlight := map[string]bool{}
-	for _, t := range pending {
-		inFlight[store.SafeTicker(fmt.Sprint(t["symbol"]))] = true
-	}
-	for i := range rows {
-		p := &rows[i]
-		if p.Status != "open" || p.IsHidden || p.IsTest {
-			continue
-		}
-		row := exitSignalQuote(ev.Quotes, p.Symbol)
-		if !exitSignalFired(row) || inFlight[p.Symbol] || !e.nobodyHolds(ev, w, p.Symbol) {
-			continue
-		}
-		ibsVal := row.IBS
-		if _, err := e.DB.ClosePosition(p.ID, store.PositionExit{
-			Date: ev.TodayKey, Price: row.CurrentPrice, IBS: &ibsVal,
-			DecisionTime: ev.EvaluatedAt, Notes: "closed_by_signal_not_held",
-		}); err != nil {
-			e.logAuto("local_trade_close_failed", corr, map[string]any{
-				"symbol": p.Symbol, "positionId": p.ID, "op": "close_unheld", "error": err.Error(),
+// applyMonitor carries out the monitoring's decision in the journal: the exit
+// closes its position on the T-1 reading, and holding nothing it may enter in
+// the same cycle. A write that fails is a decision that did not happen —
+// autotrade has nothing to follow (CORE §3.1).
+func (e *Engine) applyMonitor(ev EvalResult, dry bool, corr string) MonitorStep {
+	st := MonitorStep{Held: ev.OpenTrade}
+	dec := ev.Decision
+	if action, _ := dec["action"].(string); action == "exit" && st.Held != nil {
+		q, _ := dec["candidate"].(*LiveQuote)
+		if !dry {
+			ibsVal := q.IBS
+			closed, err := e.DB.ClosePosition(st.Held.ID, store.PositionExit{
+				Date: ev.TodayKey, Price: q.CurrentPrice, IBS: &ibsVal,
+				DecisionTime: ev.EvaluatedAt, Notes: "closed_by_monitor_signal",
 			})
-			continue
+			if err != nil {
+				e.logAuto("local_trade_close_failed", corr, map[string]any{
+					"symbol": q.Symbol, "positionId": st.Held.ID, "op": "monitor_exit", "error": err.Error(),
+				})
+				st.Failed = "выход " + q.Symbol + ": " + err.Error()
+				return st
+			}
+			st.Closed = closed
 		}
-		e.logAuto("position_closed_by_signal", corr, map[string]any{
-			"symbol": p.Symbol, "positionId": p.ID, "ibs": row.IBS,
-			"price": row.CurrentPrice, "reason": "not_held_by_any_broker",
-		})
+		st.Exit = q
+		e.logAuto("monitor_exit", corr, map[string]any{"symbol": q.Symbol, "ibs": q.IBS, "price": q.CurrentPrice, "dryRun": dry})
+		dec = decideMonitor(ev.Quotes, ev.Symbols, nil)
 	}
+	if action, _ := dec["action"].(string); action == "entry" {
+		q, _ := dec["candidate"].(*LiveQuote)
+		if !dry {
+			price, ibsVal := q.CurrentPrice, q.IBS
+			opened, err := e.DB.OpenMonitorPosition(store.Position{
+				ID: newCorrelationID(), Symbol: q.Symbol, EntryDate: ev.TodayKey,
+				EntryPrice: &price, EntryIBS: &ibsVal, EntryDecisionTime: ev.EvaluatedAt,
+			})
+			if err != nil {
+				e.logAuto("local_trade_record_failed", corr, map[string]any{
+					"symbol": q.Symbol, "op": "monitor_entry", "error": err.Error(),
+				})
+				st.Failed = "вход " + q.Symbol + ": " + err.Error()
+				return st
+			}
+			st.Opened = opened
+		}
+		st.Entry = q
+		e.logAuto("monitor_entry", corr, map[string]any{"symbol": q.Symbol, "ibs": q.IBS, "price": q.CurrentPrice, "dryRun": dry})
+		return st
+	}
+	st.Reason, _ = dec["reason"].(string)
+	return st
 }
 
-// nobodyHolds отвечает «эту бумагу не держит ни один брокер и филла по ней не
-// будет». Непрочитанная книга — не «не держит»: закрывать строку по догадке
-// нельзя, поэтому любая неизвестность отвечает false.
-func (e *Engine) nobodyHolds(ev EvalResult, w execWindow, symbol string) bool {
-	snaps := e.brokerSnapshot()
-	if len(snaps) == 0 {
-		return false
+// follow is autotrade following the monitoring's step at every attached
+// broker in parallel. A panic at one broker ends as that broker's own named
+// skip and takes nobody else with it (invariant D).
+func (e *Engine) follow(w execWindow, ev *EvalResult, trigger, corr string) {
+	busy, entryOnly, reasons := e.t1BrokerReconcile(w)
+	w.busySymbols = busy
+	runs := map[string]*BrokerRun{}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, nb := range e.brokerSnapshot() {
+		if nb.br == nil {
+			continue
+		}
+		preflight := ""
+		if entryOnly[nb.name] {
+			preflight = "open_order_symbol_unknown"
+			if reasons[nb.name] == "open_orders_unavailable" {
+				preflight = reasons[nb.name]
+			}
+		}
+		wg.Add(1)
+		go func(name string, br Broker, preflight string) {
+			defer wg.Done()
+			run := &BrokerRun{}
+			defer func() {
+				if rec := recover(); rec != nil {
+					e.logAuto("broker_execution_panic", corr, map[string]any{"broker": name, "error": fmt.Sprint(rec)})
+					run.Reason = "broker_panic"
+				}
+				mu.Lock()
+				runs[name] = run
+				mu.Unlock()
+			}()
+			e.followAt(w, *ev, trigger, corr, name, br, preflight, run)
+		}(nb.name, nb.br, preflight)
 	}
-	for _, nb := range snaps {
-		bk, ok := ev.books[nb.name]
-		if !ok || bk.err != nil {
-			return false
+	wg.Wait()
+	if len(runs) == 0 {
+		e.logAuto("execution_skipped", corr, map[string]any{"reason": "no_broker_configured"})
+	}
+	ev.Runs = runs
+	summarizeRuns(ev)
+}
+
+// followAt is autotrade at one broker (CORE §3.2): the monitoring's exit sells
+// everything in the book, whatever it is and wherever it came from; its entry
+// is bought only into a book that is read and empty. Books, orders and flags
+// here are this broker's own.
+func (e *Engine) followAt(w execWindow, ev EvalResult, trigger, corr, name string, br Broker, preflight string, run *BrokerRun) {
+	stop := func(reason string, symbols ...string) {
+		run.Reason, run.Symbols = reason, symbols
+		kv := map[string]any{"broker": name, "reason": reason}
+		if len(symbols) > 0 {
+			kv["symbols"] = strings.Join(symbols, ",")
 		}
-		if _, held := bk.held[symbol]; held {
-			return false
+		e.logAuto("execution_skipped", corr, kv)
+	}
+	enabled, allowEntries, allowExits := brokerFlags(ev.AutoTrading, name)
+	if !enabled {
+		stop("broker_disabled")
+		return
+	}
+	if st := e.storedHealthStatus(name); st == HealthNeedsReauth || st == HealthMissing {
+		stop(st)
+		return
+	}
+	mon := ev.Monitor
+	sold := false
+	if mon.Exit != nil {
+		if !allowExits {
+			stop("exits_disabled")
+			return
 		}
-		if w.busySymbols[nb.name][symbol] {
-			return false
+		held, err := e.heldSymbolsOn(br, w)
+		if err != nil {
+			stop("broker_positions_unavailable")
+			return
+		}
+		var inFlight []string
+		for _, sym := range sortedKeys(held) {
+			// A working order in this ticker owns it: a second SELL would
+			// duplicate it (AUD-072).
+			if w.busySymbols[name][sym] {
+				inFlight = append(inFlight, sym)
+				continue
+			}
+			res := e.submitOne(w, ev, trigger, corr, name, br, "exit", sym)
+			run.Sells = append(run.Sells, res)
+			sold = sold || res.Submitted || res.Ambiguous
+		}
+		if len(inFlight) > 0 {
+			stop("symbol_order_in_flight", inFlight...)
+			return
 		}
 	}
+	if mon.Entry == nil {
+		return
+	}
+	switch {
+	case !allowEntries:
+		stop("entries_disabled")
+		return
+	case preflight != "":
+		stop(preflight)
+		return
+	case sold && !e.settleSells(w, name):
+		stop("sells_not_settled")
+		return
+	}
+	held, err := e.heldSymbolsOn(br, w)
+	if err != nil {
+		stop("broker_positions_unavailable")
+		return
+	}
+	if len(held) > 0 {
+		stop("broker_not_flat", sortedKeys(held)...)
+		return
+	}
+	sym := mon.Entry.Symbol
+	if w.busySymbols[name][sym] {
+		stop("symbol_order_in_flight", sym)
+		return
+	}
+	res := e.submitOne(w, ev, trigger, corr, name, br, "entry", sym)
+	run.Buy = &res
+}
+
+// submitOne sends one order of the cycle through submitEvaluated, the single
+// path every order takes, and names its outcome by ticker and side.
+func (e *Engine) submitOne(w execWindow, ev EvalResult, trigger, corr, name string, br Broker, action, sym string) OrderResult {
+	ev.Decision = map[string]any{"action": action, "symbol": sym, "candidate": exitSignalQuote(ev.Quotes, sym)}
+	got := e.submitEvaluated(w, ev, trigger, corr, name, br)
+	res := OrderResult{}
+	switch r := got.Broker.(type) {
+	case OrderResult:
+		res = r
+	case map[string]any:
+		res.Submitted, _ = r["submitted"].(bool)
+		if r["error"] != nil {
+			res.Error = fmt.Sprint(r["error"])
+		}
+	}
+	res.Symbol, res.Side = sym, "BUY"
+	if action == "exit" {
+		res.Side = "SELL"
+	}
+	return res
+}
+
+// settleSells waits, within the closing minute, for this broker's own sells to
+// finish and its book to empty. false: a sell is still working or its state
+// could not be read, and no entry goes on top of it.
+func (e *Engine) settleSells(w execWindow, name string) bool {
+	scope := []string{name}
+	for attempt := 0; ; attempt++ {
+		t, err := e.pendingExitFor(scope)
+		if err != nil {
+			return false
+		}
+		if t == nil {
+			break
+		}
+		if attempt >= exitFillWaitAttempts || e.deadlineExceeded(w, exitFillWaitStep) {
+			return false
+		}
+		e.pollOneTracker(t)
+		e.sleep(exitFillWaitStep)
+	}
+	// The feed can list sold shares for a second or two more; the entry's own
+	// read of the book decides, this only gives it the chance (AUD-071).
+	e.awaitBrokerBooksFlat(w, scope)
 	return true
 }
 
-// executeOneBroker decides and, where the decision stands, submits for exactly
-// one broker. It touches nothing another broker's goroutine touches: its books,
-// its journal rows, its flags, its order. The returned decision is what the
-// report shows for this broker; brokerRes is the submission outcome, nil when
-// nothing was sent.
-func (e *Engine) executeOneBroker(w execWindow, ev EvalResult, trigger, corr, name string, br Broker, rows []store.Position, journalErr error) (decision map[string]any, brokerRes any, executed bool) {
-	none := func(reason string, symbol any) map[string]any {
-		return map[string]any{"action": "none", "reason": reason, "symbol": symbol, "candidate": nil}
-	}
-	enabled, allowE, allowX := brokerFlags(ev.AutoTrading, name)
-	if !enabled {
-		e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "broker_disabled"})
-		return none("broker_disabled", nil), nil, false
-	}
-	if st := e.storedHealthStatus(name); st == HealthNeedsReauth || st == HealthMissing {
-		e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": st})
-		return none(st, nil), nil, false
-	}
-	one := ev
-	// one.Decision below is this broker's, so the label must follow it and
-	// not stay on the showcase broker (AUD-021).
-	one.DecisionBroker = name
-	if journalErr != nil {
-		e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "journal_unavailable"})
-		return none("journal_unavailable", nil), nil, false
-	}
-	// Re-read the journal per broker rather than reusing the cycle's snapshot.
-	// The two brokers run in parallel and their fills are recorded by the
-	// tracker poller, so one broker's exit lands while the other is deciding:
-	// on a shared position row a stale snapshot still shows the peer's leg and
-	// held back a re-entry that was already allowed (CORE-01).
-	fresh, freshErr := e.DB.ListPositions()
-	if freshErr != nil {
-		e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "journal_unavailable"})
-		return none("journal_unavailable", nil), nil, false
-	}
-	rows = fresh
-	open, held, heldErr := e.booksForBroker(ev, name, br, rows, w)
-	one.OpenTrade = open
-	one.Decision = decideLiveAction(ev.Quotes, ev.Symbols, held, heldErr, open, allowE, allowX)
-	decision = one.Decision
-	action, _ := one.Decision["action"].(string)
-	// A working order at this broker can only duplicate an order in the same
-	// ticker, so it holds back that ticker alone (AUD-072).
-	if action != "none" {
-		sym := store.SafeTicker(fmt.Sprint(one.Decision["symbol"]))
-		if w.busySymbols[name][sym] {
-			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "symbol": sym, "reason": "symbol_order_in_flight"})
-			return none("symbol_order_in_flight", sym), nil, false
-		}
-	}
-	if action == "none" {
-		kv := map[string]any{"broker": name, "reason": one.Decision["reason"]}
-		// Сигнал, который не исполнился, уходит в лог вместе с ценой и IBS, на
-		// которых он сработал: без них из «reason=position_not_held_here» не
-		// видно, по чему мы должны были выйти (§15 CORE).
-		if sig, _ := one.Decision["signal"].(string); sig != "" {
-			kv["signal"] = sig
-			if cand, ok := one.Decision["candidate"].(*LiveQuote); ok && cand != nil {
-				kv["ibs"] = cand.IBS
-				kv["price"] = cand.CurrentPrice
+// summarizeRuns fills the per-broker summary the SPA reads: each broker's main
+// order (its buy, else its sell of the monitoring's ticker, else its first
+// sell) and what it did or why it did nothing.
+func summarizeRuns(ev *EvalResult) {
+	results := map[string]any{}
+	decisions := map[string]map[string]any{}
+	ev.Executed = false
+	for name, run := range ev.Runs {
+		d := map[string]any{"action": "none", "reason": run.Reason, "symbol": nil}
+		var main *OrderResult
+		for i := range run.Sells {
+			if run.Sells[i].Submitted {
+				ev.Executed = true
+			}
+			if main == nil || ev.Monitor.Exit != nil && run.Sells[i].Symbol == ev.Monitor.Exit.Symbol {
+				main = &run.Sells[i]
 			}
 		}
-		if heldErr != nil {
-			// Without the error text a broker_positions_unavailable skip is
-			// unexplainable after the fact — the day's entry is gone and the
-			// log says only that positions could not be read.
-			kv["error"] = heldErr.Error()
+		if run.Buy != nil {
+			main = run.Buy
+			ev.Executed = ev.Executed || run.Buy.Submitted
 		}
-		e.logAuto("execution_skipped", corr, kv)
-		return decision, nil, false
-	}
-	// A consistency mismatch holds back this broker's new entries only. The
-	// exit path is untouched: an open position is closed on its signal whatever
-	// the journal disagrees about.
-	if action == "entry" && w.entryBlocked[name] != "" {
-		// The pre-flight check names its own reason (open orders unreadable);
-		// everything else here is a journal/broker mismatch.
-		reason := w.skipReasons[name]
-		if reason == "" {
-			reason = "consistency_mismatch"
+		if main != nil {
+			results[name] = *main
+			d["symbol"] = main.Symbol
+			if main.Submitted {
+				d["action"] = map[string]string{"BUY": "entry", "SELL": "exit"}[main.Side]
+			} else if run.Reason == "" {
+				d["reason"] = main.Error
+			}
 		}
-		e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": reason})
-		return none(reason, nil), nil, false
+		decisions[name] = d
 	}
-	res := e.submitEvaluated(w, one, trigger, corr, name, br)
-	if reason, _ := res.Decision["reason"].(string); reason == "journal_unavailable" {
-		decision = res.Decision
+	ev.Broker, ev.BrokerDecisions = results, decisions
+	ev.Submitted = ev.Executed
+	ev.Phase = "decision"
+	if ev.Executed {
+		ev.Phase = "submitted"
 	}
-	return decision, res.Broker, res.Executed
 }
 
 func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, brokerName string, br Broker) EvalResult {
@@ -439,53 +513,4 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 	e.lastResult = ev
 	e.mu.Unlock()
 	return ev
-}
-
-// effectiveDecision returns the decision the run actually acted on. ev.Decision
-// is EvaluateWindow's showcase evaluation, computed on the webull book plus the
-// default broker; executeAll then decides per broker, so the showcase can say
-// "none" while another broker really exited, and can name an exit that this
-// broker skipped (AUD-017). An exit wins over an entry: the post-exit
-// orchestration is what the callers key off.
-// exitingBrokers lists the brokers whose decision in res was an exit. An empty
-// result means the run had no per-broker decisions at all, and the caller must
-// fall back to the unscoped journal check.
-func exitingBrokers(res EvalResult) []string {
-	var out []string
-	for name, d := range res.BrokerDecisions {
-		if action, _ := d["action"].(string); action == "exit" {
-			out = append(out, name)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-func effectiveDecision(res EvalResult) map[string]any {
-	if len(res.BrokerDecisions) == 0 {
-		return res.Decision
-	}
-	names := make([]string, 0, len(res.BrokerDecisions))
-	for name := range res.BrokerDecisions {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	var entry map[string]any
-	for _, name := range names {
-		d := res.BrokerDecisions[name]
-		switch action, _ := d["action"].(string); action {
-		case "exit":
-			return d
-		case "entry":
-			if entry == nil {
-				entry = d
-			}
-		}
-	}
-	if entry != nil {
-		return entry
-	}
-	// Every broker was skipped: the showcase decision is what the report needs
-	// in order to say which order was not sent.
-	return res.Decision
 }

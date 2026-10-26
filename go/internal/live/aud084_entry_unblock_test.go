@@ -9,11 +9,11 @@ import (
 	"mktorder.com/go/internal/types"
 )
 
-// AUD-084: снимок несогласованности снимается один раз, в начале минуты.
-// Ручная позиция без журнала ставит брокеру entryBlocked; тот же цикл её и
-// закрывает, но флаг оставался — повторный вход пропускался за минуту до
-// закрытия, хотя причина блокировки уже исчезла.
-func TestEntryUnblockedAfterOwnExitClearsManualPosition(t *testing.T) {
+// AUD-084 в новой модели: мониторинг держит AAPL (автоторговля его не
+// покупала — на счёте AAPL, купленный руками). Выход мониторинга очищает счёт,
+// и в том же цикле, когда продажа подтверждена и книга пуста, брокер входит в
+// новый сигнал (CORE §3.2).
+func TestMonitorExitClearsAccountThenEntryBuys(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -39,8 +39,9 @@ func TestEntryUnblockedAfterOwnExitClearsManualPosition(t *testing.T) {
 			"webull": map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
 		},
 	})
-	// Позиция куплена руками: в журнале её нет, значит консистентность даёт
-	// live_broker_position_without_journal и блокирует вход этому брокеру.
+	if _, err := db.OpenMonitorPosition(store.Position{ID: "m-aapl", Symbol: "AAPL", EntryDate: "2026-08-28", EntryPrice: store.Ptr(10.0)}); err != nil {
+		t.Fatal(err)
+	}
 	wb.Acct = map[string]any{"cash_balance": 10000.0}
 	wb.FillStatus = "FILLED"
 	wb.FillPrice = 11.9
@@ -74,6 +75,6 @@ func TestEntryUnblockedAfterOwnExitClearsManualPosition(t *testing.T) {
 		t.Fatalf("want exactly one exit, got %d: %+v", sells, wb.Orders)
 	}
 	if buys != 1 {
-		t.Fatalf("entry must not stay blocked by the position this cycle closed, got %d buys: %+v", buys, wb.Orders)
+		t.Fatalf("the cleared account must take the new entry, got %d buys: %+v", buys, wb.Orders)
 	}
 }

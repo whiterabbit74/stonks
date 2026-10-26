@@ -4,11 +4,13 @@ import "testing"
 
 // AUD-118: an exit order larger than the journalled quantity takes the whole
 // remainder. The position closed, but the leg kept showing the shares it had
-// just sold, with no exit price and no order id (invariant K.1).
+// just sold, with no exit price and no order id. A test row lives by its fills,
+// so it is the one that closes here; the monitoring's position is closed by
+// its signal (monitor_position_test.go).
 func TestPartialExitCoveringTheRestFlattensTheLeg(t *testing.T) {
 	db := openTestDB(t)
 	if err := db.SavePosition(Position{
-		ID: "p1", Symbol: "AAPL", Status: "open", Quantity: 4, EntryPrice: Ptr(10.0),
+		ID: "p1", Symbol: "AAPL", Status: "open", Quantity: 4, EntryPrice: Ptr(10.0), IsTest: true,
 		Webull: BrokerLeg{Qty: 4, EntryPrice: Ptr(10.0), EntryOrderID: "w1"},
 	}); err != nil {
 		t.Fatal(err)
@@ -31,12 +33,12 @@ func TestPartialExitCoveringTheRestFlattensTheLeg(t *testing.T) {
 	}
 }
 
-// The manual close has no order id to record, but a closed row must still not
-// claim the broker is holding.
+// The manual close of a test row has no order id to record, but a closed test
+// row must still not claim the broker is holding.
 func TestManualCloseFlattensTheLeg(t *testing.T) {
 	db := openTestDB(t)
 	if err := db.SavePosition(Position{
-		ID: "p1", Symbol: "AAPL", Status: "open", Quantity: 4, EntryPrice: Ptr(10.0),
+		ID: "p1", Symbol: "AAPL", Status: "open", Quantity: 4, EntryPrice: Ptr(10.0), IsTest: true,
 		Webull: BrokerLeg{Qty: 4, EntryPrice: Ptr(10.0), EntryOrderID: "w1"},
 	}); err != nil {
 		t.Fatal(err)

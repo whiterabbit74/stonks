@@ -19,7 +19,8 @@ func saveEntryTracker(t *testing.T, db *DB, id string, qty float64) {
 func TestEntryReplayAfterCloseBooksNothing(t *testing.T) {
 	db := openTestDB(t)
 	saveEntryTracker(t, db, "b1", 1)
-	b1 := EntryFill{Symbol: "AAPL", Broker: "webull", OrderID: "b1", Qty: 1, Price: Ptr(10.0), EntryDate: "2026-09-01"}
+	// A test row: it is the kind a fill closes.
+	b1 := EntryFill{Symbol: "AAPL", Broker: "webull", OrderID: "b1", Qty: 1, Price: Ptr(10.0), EntryDate: "2026-09-01", IsTest: true}
 	if _, err := db.AttachEntry(b1); err != nil {
 		t.Fatal(err)
 	}
