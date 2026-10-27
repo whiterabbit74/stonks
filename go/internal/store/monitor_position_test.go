@@ -55,6 +55,37 @@ func TestMonitorPositionLivesBySignalAndLegsByFills(t *testing.T) {
 	}
 }
 
+// A leg left unsold on the exit day is still the position's: the next
+// clearing of the account sells it into that leg, days later. A row from
+// before source=monitor keeps the old same-day rule (CORE §14.2, §14.5).
+func TestUnsoldLegIsFoundAfterItsExitDay(t *testing.T) {
+	db := openTestDB(t)
+	if _, err := db.OpenMonitorPosition(Position{ID: "m1", Symbol: "AAPL", EntryDate: "2026-09-01", EntryPrice: Ptr(10.0),
+		Webull: BrokerLeg{Qty: 3, EntryOrderID: "b1"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ClosePosition("m1", PositionExit{Date: "2026-09-03", Price: 11}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SavePosition(Position{ID: "old", Symbol: "MSFT", Status: "closed", Source: "manual",
+		EntryDate: "2026-08-01", ExitDate: "2026-08-05", Webull: BrokerLeg{Qty: 2}}); err != nil {
+		t.Fatal(err)
+	}
+	if row, err := db.ExitRowFor("AAPL", "webull", "2026-09-10"); err != nil || row == nil || row.ID != "m1" {
+		t.Fatalf("a later sell belongs to the unsold leg: %+v %v", row, err)
+	}
+	if err := db.SaveOrderTracker(map[string]any{"clientOrderId": "s1", "symbol": "AAPL", "action": "exit", "quantity": 3}); err != nil {
+		t.Fatal(err)
+	}
+	after, booked, err := db.ExitLeg("m1", "webull", "s1", 3, PositionExit{Date: "2026-09-10", Price: 9.5})
+	if err != nil || !booked || after.Webull.Qty != 0 || *after.Webull.ExitPrice != 9.5 || *after.ExitPrice != 11 {
+		t.Fatalf("the leg takes the sell, the signal side stays: %+v booked=%v err=%v", after, booked, err)
+	}
+	if row, err := db.ExitRowFor("MSFT", "webull", "2026-09-10"); err != nil || row != nil {
+		t.Fatalf("a pre-monitor row takes no later sell: %+v %v", row, err)
+	}
+}
+
 // A partial sell shrinks the leg of the monitoring's row by the new part; the
 // row is not split, its P&L is the signal's.
 func TestMonitorPositionPartialSellShrinksTheLeg(t *testing.T) {

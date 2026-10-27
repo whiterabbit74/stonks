@@ -153,14 +153,16 @@ func (d *DB) OpenMonitorPosition(p Position) (*Position, error) {
 }
 
 // ExitRowFor finds the position a broker's sell belongs to: the one whose leg
-// at this broker still holds the ticker — open, or closed by the monitoring on
-// the sell's own trading day, before the fill arrived (invariant K.2). nil
-// means the shares were in nobody's leg: a leftover, not a position's exit.
+// at this broker still holds the ticker — open, or already closed by the
+// monitoring, however many days ago: a leg not sold on its exit day is sold by
+// a later clearing of the account (invariant K.2, K.5). A row from before
+// source=monitor is found this way only on its own exit day. nil means the
+// shares were in nobody's leg: a leftover, not a position's exit.
 func (d *DB) ExitRowFor(symbol, broker, dateKey string) (*Position, error) {
 	col := legColumn(broker)
 	p, err := d.scanPosition(d.SQL.QueryRow(`SELECT `+positionColumns+` FROM positions
-		WHERE symbol=? AND `+col+`_qty > 0 AND (status='open' OR (is_test=0 AND exit_date=?))
-		ORDER BY status='open' DESC, entry_date DESC, id LIMIT 1`, SafeTicker(symbol), dateKey))
+		WHERE symbol=? AND `+col+`_qty > 0 AND (status='open' OR (is_test=0 AND (source=? OR exit_date=?)))
+		ORDER BY status='open' DESC, entry_date DESC, id LIMIT 1`, SafeTicker(symbol), SourceMonitor, dateKey))
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
