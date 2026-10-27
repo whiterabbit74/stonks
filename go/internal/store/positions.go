@@ -642,10 +642,7 @@ func exitLegTx(tx *sql.Tx, id, broker string, exitPrice float64, exitOrderID str
 // closes on the signal, a leg closes on a fill, and a position can be closed by
 // signal with no broker leg at all.
 func (d *DB) CloseLeg(id, broker string, exitPrice float64, exitOrderID string) error {
-	col := "webull"
-	if normalizeBroker(broker) == "robinhood" {
-		col = "rh"
-	}
+	col := legColumn(broker)
 	_, err := d.SQL.Exec(`UPDATE positions SET `+col+`_exit_price=?, `+col+`_exit_order_id=? WHERE id=?`,
 		exitPrice, nullText(exitOrderID), id)
 	return err
@@ -656,10 +653,7 @@ func (d *DB) CloseLeg(id, broker string, exitPrice float64, exitOrderID string) 
 // broker's to exit — and is not a discrepancy either, just a signal nobody
 // executed here.
 func (d *DB) OpenPositionForBroker(broker string) (*Position, error) {
-	col := "webull"
-	if normalizeBroker(broker) == "robinhood" {
-		col = "rh"
-	}
+	col := legColumn(broker)
 	p, err := d.scanPosition(d.SQL.QueryRow(`SELECT ` + positionColumns +
 		` FROM positions WHERE status='open' AND is_hidden=0 AND ` + col + `_qty > 0` +
 		` ORDER BY entry_date DESC, id LIMIT 1`))
@@ -745,10 +739,7 @@ func (d *DB) splitPositionTx(tx *sql.Tx, id, broker string, sold float64, exitOr
 	if rest.Qty < 0 {
 		rest.Qty = 0
 	}
-	col := "webull"
-	if normalizeBroker(broker) == "robinhood" {
-		col = "rh"
-	}
+	col := legColumn(broker)
 	res, err := tx.Exec(`UPDATE positions SET quantity=?, `+col+`_qty=? WHERE id=? AND status='open'`, left, rest.Qty, id)
 	if err != nil {
 		return err
