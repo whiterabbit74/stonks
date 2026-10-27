@@ -886,8 +886,11 @@ func weightedPrice(q1 float64, p1 *float64, q2 float64, p2 *float64) *float64 {
 	return &v
 }
 
-// AttachEntry records an entry fill on the open position of that ticker,
-// creating the position when this broker is the first one in.
+// AttachEntry records an entry fill on the open row of its own layer: a test
+// buy on a test row, the monitoring's fill on the monitoring's position. A
+// monitoring fill that finds its position already closed (booked after the
+// signal's exit) goes to a test row, which lives by fills: a fill never opens
+// the monitoring's position (invariant I).
 //
 // The look-up and the write are one transaction on purpose. The two brokers run
 // in parallel, so "is there an open position in this ticker" and "insert one"
@@ -902,14 +905,15 @@ func (d *DB) AttachEntry(f EntryFill) (*Position, error) {
 	defer tx.Rollback()
 
 	p, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+
-		` FROM positions WHERE symbol=? AND status='open' ORDER BY entry_date DESC, id LIMIT 1`, symbol))
+		` FROM positions WHERE symbol=? AND status='open' AND is_test>=?
+		ORDER BY is_test, entry_date DESC, id LIMIT 1`, symbol, boolInt(f.IsTest)))
 	fresh := err == sql.ErrNoRows
 	switch {
 	case err == sql.ErrNoRows:
 		p = Position{
 			ID: f.OrderID, Symbol: symbol, Status: "open",
 			EntryDate: f.EntryDate, EntryPrice: f.Price, EntryIBS: f.IBS,
-			Source: f.Source, Notes: f.Notes, IsTest: f.IsTest,
+			Source: f.Source, Notes: f.Notes, IsTest: true,
 		}
 		if p.ID == "" {
 			p.ID = fmt.Sprintf("p-%d", time.Now().UnixNano())
@@ -918,13 +922,6 @@ func (d *DB) AttachEntry(f EntryFill) (*Position, error) {
 		return nil, err
 	}
 
-	// A strategy fill on a row opened by the test-buy button makes it a
-	// strategy position: is_test is what keeps a row out of the monitoring page
-	// and the statistics, and a real entry left under that flag is a position
-	// nobody can see.
-	if !f.IsTest {
-		p.IsTest = false
-	}
 	leg := p.Leg(f.Broker)
 	// Each order is booked once, by what its tracker says the journal already
 	// holds of it — not by what the open row of the ticker happens to carry.

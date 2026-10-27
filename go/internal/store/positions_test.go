@@ -249,25 +249,35 @@ func TestCloseLegWritesOnlyThatBroker(t *testing.T) {
 	}
 }
 
-// A test buy leaves an is_test row open. A strategy entry in the same ticker
-// attaches to it, and must not inherit the flag that hides the row from the
-// monitoring page and the statistics.
-func TestAttachEntryClearsTestFlagOnStrategyFill(t *testing.T) {
+// A fill goes into the row of its own layer. With a test buy of MSFT open,
+// the monitoring's MSFT fill goes into the monitoring's position and the test
+// row stays a test row. A monitoring fill whose position is already closed
+// goes to a test row and does not become the monitoring's position (CORE §12).
+func TestEntryFillGoesToTheRowOfItsLayer(t *testing.T) {
 	db := openTestDB(t)
-	if _, err := db.AttachEntry(EntryFill{Symbol: "MSFT", Broker: "webull", OrderID: "t-1",
+	if _, err := db.AttachEntry(EntryFill{Symbol: "MSFT", Broker: "webull", OrderID: "a-t1",
 		Qty: 1, EntryDate: "2026-09-04", Source: "test_buy", IsTest: true}); err != nil {
 		t.Fatal(err)
 	}
-	p, err := db.AttachEntry(EntryFill{Symbol: "MSFT", Broker: "webull", OrderID: "w-2",
-		Qty: 5, EntryDate: "2026-09-04", Source: "auto"})
-	if err != nil {
+	if _, err := db.OpenMonitorPosition(Position{ID: "m1", Symbol: "MSFT", EntryDate: "2026-09-04", EntryPrice: Ptr(8.0)}); err != nil {
 		t.Fatal(err)
 	}
-	if p.IsTest {
-		t.Fatal("a strategy position stayed marked as a test buy and is hidden from monitoring")
+	p, err := db.AttachEntry(EntryFill{Symbol: "MSFT", Broker: "webull", OrderID: "w-2", Qty: 5, EntryDate: "2026-09-04", Source: "telegram_t1"})
+	if err != nil || p.ID != "m1" || p.Webull.Qty != 5 {
+		t.Fatalf("the monitoring's fill belongs to its position: %+v %v", p, err)
 	}
-	got, _ := db.GetPosition(p.ID)
-	if got == nil || got.IsTest {
-		t.Fatalf("stored row still test: %+v", got)
+	if tp, _ := db.GetPosition("a-t1"); tp == nil || !tp.IsTest || tp.Webull.Qty != 1 {
+		t.Fatalf("the test row stays a test row: %+v", tp)
+	}
+
+	if _, err := db.ClosePosition("m1", PositionExit{Date: "2026-09-08", Price: 9}); err != nil {
+		t.Fatal(err)
+	}
+	late, err := db.AttachEntry(EntryFill{Symbol: "MSFT", Broker: "robinhood", OrderID: "r-2", Qty: 4, EntryDate: "2026-09-04", Source: "telegram_t1"})
+	if err != nil || late == nil || !late.IsTest {
+		t.Fatalf("a late monitoring fill lands on a test row: %+v %v", late, err)
+	}
+	if _, err := db.OpenMonitorPosition(Position{ID: "m2", Symbol: "AAPL", EntryDate: "2026-09-09"}); err != nil {
+		t.Fatalf("a fill must not open the monitoring's position: %v", err)
 	}
 }
