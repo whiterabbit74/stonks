@@ -356,8 +356,10 @@ func TestBrokerJournalTrackedAndLogsArePerKind(t *testing.T) {
 		t.Fatal("broker-form handler not bounded")
 	}
 	submit := a[form : form+end]
-	if !strings.Contains(submit, "broker: kind") && !strings.Contains(submit, "rec.broker = kind") {
-		t.Fatal("journal POST must stamp rec.broker = kind so a Robinhood add is not stored as webull")
+	// A trade typed here is shares at the broker, not the monitoring's
+	// position (CORE §15).
+	if !strings.Contains(submit, "isTest: true") {
+		t.Fatal("broker-page journal POST must write a row outside the monitoring (isTest)")
 	}
 }
 
