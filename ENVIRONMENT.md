@@ -31,7 +31,7 @@ so this only lets non-browser clients (curl, the MCP binary) work, and
 `SameSite=Lax` is what stops the browser case.
 
 The consequence to be aware of: the endpoints that send live orders
-(`POST /api/autotrade/execute`, `.../close-position`, `.../test-buy`) sit behind
+(`POST /api/autotrade/<broker>/close-position`, `.../test-buy`) sit behind
 exactly this level of protection and no more — the same as reading settings.
 The live test-buy endpoints stay off unless `WEBULL_ENABLE_LIVE_TEST_BUY` /
 `ROBINHOOD_ENABLE_LIVE_TEST_BUY` are explicitly `true`, and both cap the
