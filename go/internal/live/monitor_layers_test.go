@@ -39,7 +39,9 @@ func layersEngine(t *testing.T, autotrade bool) (*Engine, *MemoryBroker, *Memory
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
 	e.Now = nearCloseNow()
-	e.Sleep = func(time.Duration) {}
+	// A real pause, as in isolationEngine: ten instant tries at a sell's
+	// tracker could all land inside one background poll of it.
+	e.Sleep = func(time.Duration) { time.Sleep(time.Millisecond) }
 	e.PatchAutoConfig(map[string]any{
 		"enabled": autotrade, "lowIBS": 0.10, "highIBS": 0.75, "entryCapitalMode": "cash_100",
 		"brokers": map[string]any{

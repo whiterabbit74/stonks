@@ -30,7 +30,10 @@ func isolationEngine(t *testing.T) (*Engine, *MemoryBroker, *MemoryBroker) {
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
 	e.Now = nearCloseNow()
-	e.Sleep = func(time.Duration) {}
+	// A real pause, however short: the wait for a sell polls a tracker the
+	// background poll may hold that instant, and ten instant tries could all
+	// land inside its one poll.
+	e.Sleep = func(time.Duration) { time.Sleep(time.Millisecond) }
 	wb := &MemoryBroker{Name: "webull", FillStatus: "FILLED", FillPrice: 11.9, FillQty: 7,
 		Acct: map[string]any{"cash_balance": 10000.0}}
 	rh := &MemoryBroker{Name: "robinhood", FillStatus: "FILLED", FillPrice: 11.9, FillQty: 42,
