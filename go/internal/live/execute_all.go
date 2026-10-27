@@ -204,6 +204,7 @@ func (e *Engine) followAt(w execWindow, ev EvalResult, trigger, corr, name strin
 	}
 	mon := ev.Monitor
 	settled := true
+	var book map[string]float64 // the exit's read of the book, while no sell has made it stale
 	if mon.Exit != nil && !allowExits && mon.Entry == nil {
 		stop("exits_disabled")
 		return
@@ -234,6 +235,8 @@ func (e *Engine) followAt(w execWindow, ev EvalResult, trigger, corr, name strin
 		// down gets its one retry in this same minute (CORE §3.2).
 		if len(run.Sells) > 0 {
 			settled = e.settleSells(w, ev, trigger, corr, name, br, run)
+		} else {
+			book = held
 		}
 	}
 	if mon.Entry == nil {
@@ -250,10 +253,13 @@ func (e *Engine) followAt(w execWindow, ev EvalResult, trigger, corr, name strin
 		stop("sells_not_settled")
 		return
 	}
-	held, err := e.heldSymbolsOn(br, w)
-	if err != nil {
-		stop("broker_positions_unavailable")
-		return
+	held := book
+	if held == nil {
+		var err error
+		if held, err = e.heldSymbolsOn(br, w); err != nil {
+			stop("broker_positions_unavailable")
+			return
+		}
 	}
 	if len(held) > 0 {
 		stop("broker_not_flat", sortedKeys(held)...)

@@ -157,8 +157,8 @@ func TestExitClearsEachAccountAndEntryNeedsItEmpty(t *testing.T) {
 }
 
 // Exits off at a broker whose account is empty: nothing to sell, and the
-// entry of the same cycle is bought — the empty-book rule is the only one
-// (CORE §3.2).
+// entry of the same cycle is bought — the empty-book rule is the only one.
+// The book is read once for both, in the closing minute (CORE §3.2).
 func TestExitsOffStillBuysIntoAnEmptyAccount(t *testing.T) {
 	e, wb, rh := layersEngine(t, true)
 	e.PatchAutoConfig(map[string]any{"brokers": map[string]any{
@@ -172,6 +172,9 @@ func TestExitsOffStillBuysIntoAnEmptyAccount(t *testing.T) {
 	for _, br := range []*MemoryBroker{wb, rh} {
 		if got := sides(br.Orders); strings.Join(got, " ") != "BUY:MSFT" {
 			t.Fatalf("%s buys into its empty account: %v", br.Name, got)
+		}
+		if br.PosCalls != 1 {
+			t.Fatalf("%s book read %d times, want once", br.Name, br.PosCalls)
 		}
 	}
 }
