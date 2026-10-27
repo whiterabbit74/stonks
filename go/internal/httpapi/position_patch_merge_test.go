@@ -123,3 +123,16 @@ func TestPositionRejectsInvalidDate(t *testing.T) {
 		t.Fatalf("got %+v", p)
 	}
 }
+
+// A trade typed on the broker page is a record of shares at the broker, not
+// the monitoring's position: the monitoring can still open its own (CORE §15).
+func TestBrokerPageTradeIsNotTheMonitoringPosition(t *testing.T) {
+	s, _, _ := liveServer(t)
+	body := map[string]any{"symbol": "TQQQ", "entryDate": "2026-08-20", "entryPrice": 50.0, "status": "open", "source": "manual", "isTest": true}
+	if rec := postJSON(s, "/api/positions", body); rec.Code != 200 {
+		t.Fatalf("post: %d %s", rec.Code, rec.Body.String())
+	}
+	if _, err := s.DB.OpenMonitorPosition(store.Position{ID: "m1", Symbol: "AAPL", EntryDate: "2026-08-21"}); err != nil {
+		t.Fatalf("monitoring blocked by a broker-page trade: %v", err)
+	}
+}

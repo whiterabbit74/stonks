@@ -4289,13 +4289,16 @@
             notes: fd.get('notes') || '',
             source: 'manual',
             status: (exitDate && exitPrice > 0) ? 'closed' : 'open',
-            broker: kind,
+            // Запись о бумагах у брокера, а не позиция мониторинга (CORE §15).
+            isTest: true,
           };
           if (exitDate) rec.exitDate = exitDate;
           if (exitPrice > 0) rec.exitPrice = exitPrice;
           await API.addPosition(rec);
           const bt = await API.positions({ includeHidden: true, includeTest: true }).catch(() => ({ positions: [] }));
           state.broker = Array.isArray(bt) ? bt : (bt.positions || []);
+          state.brokerShowHidden = true;
+          toast('Сделка записана вне мониторинга');
           renderPage();
         } catch (err) { toast(errText(err)); }
       });
