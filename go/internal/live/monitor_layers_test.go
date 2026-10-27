@@ -149,9 +149,29 @@ func TestExitClearsEachAccountAndEntryNeedsItEmpty(t *testing.T) {
 	if len(wb.Orders) != 0 || res.Executed != true {
 		t.Fatalf("Webull may not sell, so it neither sells nor buys: %v", wb.Orders)
 	}
-	for _, want := range []string{"Выход AAPL", "Вход MSFT", "Webull: выходы выключены", "Robinhood: BUY MSFT MARKET отправлен"} {
+	for _, want := range []string{"Выход AAPL", "Вход MSFT", "Webull: вход MSFT пропущен — на счёте остаток: AAPL", "Robinhood: BUY MSFT MARKET отправлен"} {
 		if !strings.Contains(res.Text, want) {
 			t.Fatalf("want %q in:\n%s", want, res.Text)
+		}
+	}
+}
+
+// Exits off at a broker whose account is empty: nothing to sell, and the
+// entry of the same cycle is bought — the empty-book rule is the only one
+// (CORE §3.2).
+func TestExitsOffStillBuysIntoAnEmptyAccount(t *testing.T) {
+	e, wb, rh := layersEngine(t, true)
+	e.PatchAutoConfig(map[string]any{"brokers": map[string]any{
+		"webull":    map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": false},
+		"robinhood": map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
+	}})
+	if _, err := e.DB.OpenMonitorPosition(store.Position{ID: "m1", Symbol: "AAPL", EntryDate: "2026-08-31", EntryPrice: store.Ptr(10.0)}); err != nil {
+		t.Fatal(err)
+	}
+	e.Execute("telegram_t1")
+	for _, br := range []*MemoryBroker{wb, rh} {
+		if got := sides(br.Orders); strings.Join(got, " ") != "BUY:MSFT" {
+			t.Fatalf("%s buys into its empty account: %v", br.Name, got)
 		}
 	}
 }

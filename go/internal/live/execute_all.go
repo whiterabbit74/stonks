@@ -204,11 +204,13 @@ func (e *Engine) followAt(w execWindow, ev EvalResult, trigger, corr, name strin
 	}
 	mon := ev.Monitor
 	settled := true
-	if mon.Exit != nil {
-		if !allowExits {
-			stop("exits_disabled")
-			return
-		}
+	if mon.Exit != nil && !allowExits && mon.Entry == nil {
+		stop("exits_disabled")
+		return
+	}
+	// Exits off here: nothing is sold, and an entry of the same cycle still
+	// goes by its own rule — an empty book buys (CORE §3.2).
+	if mon.Exit != nil && allowExits {
 		held, err := e.heldSymbolsOn(br, w)
 		if err != nil {
 			stop("broker_positions_unavailable")
