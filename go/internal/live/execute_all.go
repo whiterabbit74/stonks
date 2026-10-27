@@ -76,10 +76,12 @@ func (e *Engine) runCycle(w execWindow, trigger string, dry bool, decided func(E
 			e.logAuto("execution_skipped", corr, map[string]any{"reason": "autotrading_disabled"})
 		}
 	}
-	e.mu.Lock()
-	e.lastRunAt = ev.EvaluatedAt
-	e.lastResult = ev
-	e.mu.Unlock()
+	if !dry { // a simulation is not the last run
+		e.mu.Lock()
+		e.lastRunAt = ev.EvaluatedAt
+		e.lastResult = ev
+		e.mu.Unlock()
+	}
 	return ev
 }
 

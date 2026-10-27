@@ -292,3 +292,18 @@ func TestPartlyFilledSellIsNotRetried(t *testing.T) {
 		t.Fatalf("the account is not empty, so no entry: %+v", run)
 	}
 }
+
+// A T-1 simulation from the UI decides and writes nothing, and it is not the
+// last run either: the broker page keeps showing the real one.
+func TestDryRunKeepsTheLastRealRun(t *testing.T) {
+	e, _, _ := layersEngine(t, true)
+	e.Execute("telegram_t1")
+	at, last := e.LastRun()
+	res, err := e.Aggregate(1, AggregateOpts{ForceSend: true, DryRun: true})
+	if err != nil || res.Reason == "already_executed" || !strings.Contains(res.Text, "МОНИТОРИНГ") {
+		t.Fatalf("the simulation must run its cycle: %+v %v", res, err)
+	}
+	if gotAt, got := e.LastRun(); gotAt != at || got.(EvalResult).EvaluatedAt != last.(EvalResult).EvaluatedAt || got.(EvalResult).Monitor.Opened == nil {
+		t.Fatalf("the simulation replaced the last run: %v %+v", gotAt, got)
+	}
+}
