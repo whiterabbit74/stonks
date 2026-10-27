@@ -519,7 +519,7 @@ func orderLine(label string, o OrderResult) string {
 	case o.Ambiguous:
 		return fmt.Sprintf("• %s: %s %s — статус отправки неизвестен", label, o.Side, o.Symbol)
 	}
-	return fmt.Sprintf("• %s: %s %s не отправлен: %s", label, o.Side, o.Symbol, html.EscapeString(o.Error))
+	return fmt.Sprintf("• %s: %s %s не прошёл: %s", label, o.Side, o.Symbol, html.EscapeString(o.Error))
 }
 
 func autoReasonText(run *BrokerRun, mon *MonitorStep) string {

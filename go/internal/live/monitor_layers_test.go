@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -152,5 +153,117 @@ func TestExitClearsEachAccountAndEntryNeedsItEmpty(t *testing.T) {
 		if !strings.Contains(res.Text, want) {
 			t.Fatalf("want %q in:\n%s", want, res.Text)
 		}
+	}
+}
+
+// rejectFirstSell is a broker that turns down the cycle's first SELL: after
+// accepting it (REJECTED, or CANCELLED with one share filled when partial is
+// set), or right at placement, as Robinhood answers.
+type rejectFirstSell struct {
+	*MemoryBroker
+	atPlacement, partial bool
+	sellTries            int
+	refusedID            string // the order refused at placement, known to the broker as REJECTED
+}
+
+func (b *rejectFirstSell) firstSellID() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, o := range b.Orders {
+		if o.Side == "SELL" {
+			return o.ClientOrderID
+		}
+	}
+	return ""
+}
+
+func (b *rejectFirstSell) PlaceMarket(ctx context.Context, symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
+	if side == "SELL" {
+		b.sellTries++
+		if b.atPlacement && b.sellTries == 1 {
+			b.refusedID = cfg.ClientOrderID
+			return OrderResult{ClientOrderID: cfg.ClientOrderID, Symbol: symbol, Side: side, Quantity: qty,
+				Status: "rejected", Error: "order rejected by Robinhood: rejected"}, nil
+		}
+	}
+	return b.MemoryBroker.PlaceMarket(ctx, symbol, side, qty, cfg)
+}
+
+func (b *rejectFirstSell) OrderDetail(ctx context.Context, id string) (map[string]any, error) {
+	if id != "" && id == b.refusedID {
+		return map[string]any{"status": "REJECTED", "client_order_id": id}, nil
+	}
+	if !b.atPlacement && id != "" && id == b.firstSellID() {
+		if b.partial {
+			return map[string]any{"status": "CANCELLED", "filled_qty": 1.0, "client_order_id": id}, nil
+		}
+		return map[string]any{"status": "REJECTED", "client_order_id": id}, nil
+	}
+	return b.MemoryBroker.OrderDetail(ctx, id)
+}
+
+// rejectedSellEngine: the monitoring exits AAPL and enters MSFT; Robinhood
+// holds 2 AAPL, which leave its book only once a SELL of them really went
+// through (the second one); Webull is empty.
+func rejectedSellEngine(t *testing.T, br *rejectFirstSell) (*Engine, *MemoryBroker) {
+	t.Helper()
+	e, wb, rh := layersEngine(t, true)
+	br.MemoryBroker = rh
+	rh.FillStatus, rh.FillPrice = "FILLED", 11.9
+	rh.OnPositions = func() []any {
+		if br.sellTries >= 2 {
+			return []any{}
+		}
+		return []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}
+	}
+	e.AttachBroker("robinhood", br)
+	if _, err := e.DB.OpenMonitorPosition(store.Position{ID: "m1", Symbol: "AAPL", EntryDate: "2026-08-31", EntryPrice: store.Ptr(10.0)}); err != nil {
+		t.Fatal(err)
+	}
+	return e, wb
+}
+
+// A sell the broker turned down without a fill is sent once more in the same
+// minute; once it goes through, the account is empty and the entry follows
+// (CORE §3.2).
+func TestRejectedSellIsRetriedOnceInTheMinute(t *testing.T) {
+	for _, atPlacement := range []bool{false, true} {
+		br := &rejectFirstSell{atPlacement: atPlacement}
+		e, wb := rejectedSellEngine(t, br)
+		res, err := e.Aggregate(1, AggregateOpts{ForceSend: true, UpdateState: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if br.sellTries != 2 {
+			t.Fatalf("atPlacement=%v: one retry of the turned-down sell, got %d sells", atPlacement, br.sellTries)
+		}
+		if _, buy, sym := sidesOf(br.MemoryBroker); buy != 1 || sym != "MSFT" {
+			t.Fatalf("atPlacement=%v: the cleared account takes the entry: %v", atPlacement, sides(br.Orders))
+		}
+		if got := sides(wb.Orders); strings.Join(got, " ") != "BUY:MSFT" {
+			t.Fatalf("Webull is empty and only buys: %v", got)
+		}
+		for _, want := range []string{"Robinhood: SELL AAPL не прошёл: отклонён брокером (rejected) — повтор", "Robinhood: SELL AAPL MARKET отправлен", "Robinhood: BUY MSFT MARKET отправлен"} {
+			if !strings.Contains(res.Text, want) {
+				t.Fatalf("atPlacement=%v: want %q in:\n%s", atPlacement, want, res.Text)
+			}
+		}
+		if !hasAutotradeLog(t, e, "event=exit_rejected_retry") {
+			t.Fatal("the retry must be logged")
+		}
+	}
+}
+
+// A sell that executed even one share is not retried: the feed may still list
+// what it sold, and a second SELL could sell it twice.
+func TestPartlyFilledSellIsNotRetried(t *testing.T) {
+	br := &rejectFirstSell{partial: true}
+	e, _ := rejectedSellEngine(t, br)
+	res := e.Execute("telegram_t1")
+	if br.sellTries != 1 {
+		t.Fatalf("a sell with a fill must not be retried, got %d sells", br.sellTries)
+	}
+	if run := res.Runs["robinhood"]; run.Buy != nil || run.Reason != "broker_not_flat" {
+		t.Fatalf("the account is not empty, so no entry: %+v", run)
 	}
 }

@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"html"
@@ -202,7 +203,7 @@ func (e *Engine) followAt(w execWindow, ev EvalResult, trigger, corr, name strin
 		return
 	}
 	mon := ev.Monitor
-	sold := false
+	settled := true
 	if mon.Exit != nil {
 		if !allowExits {
 			stop("exits_disabled")
@@ -221,13 +222,16 @@ func (e *Engine) followAt(w execWindow, ev EvalResult, trigger, corr, name strin
 				inFlight = append(inFlight, sym)
 				continue
 			}
-			res := e.submitOne(w, ev, trigger, corr, name, br, "exit", sym)
-			run.Sells = append(run.Sells, res)
-			sold = sold || res.Submitted || res.Ambiguous
+			run.Sells = append(run.Sells, e.submitOne(w, ev, trigger, corr, name, br, "exit", sym))
 		}
 		if len(inFlight) > 0 {
 			stop("symbol_order_in_flight", inFlight...)
 			return
+		}
+		// Waited for whether an entry follows or not: a sell the broker turned
+		// down gets its one retry in this same minute (CORE §3.2).
+		if len(run.Sells) > 0 {
+			settled = e.settleSells(w, ev, trigger, corr, name, br, run)
 		}
 	}
 	if mon.Entry == nil {
@@ -240,7 +244,7 @@ func (e *Engine) followAt(w execWindow, ev EvalResult, trigger, corr, name strin
 	case preflight != "":
 		stop(preflight)
 		return
-	case sold && !e.settleSells(w, name):
+	case !settled:
 		stop("sells_not_settled")
 		return
 	}
@@ -285,9 +289,30 @@ func (e *Engine) submitOne(w execWindow, ev EvalResult, trigger, corr, name stri
 }
 
 // settleSells waits, within the closing minute, for this broker's own sells to
-// finish and its book to empty. false: a sell is still working or its state
-// could not be read, and no entry goes on top of it.
-func (e *Engine) settleSells(w execWindow, name string) bool {
+// finish, sends once more every one the broker turned down without a fill, and
+// gives the book the chance to empty. false: a sell is still working or its
+// state could not be read, and no entry goes on top of it.
+func (e *Engine) settleSells(w execWindow, ev EvalResult, trigger, corr, name string, br Broker, run *BrokerRun) bool {
+	if !e.awaitSellsFinal(w, name) {
+		return false
+	}
+	if e.retryRejectedSells(w, ev, trigger, corr, name, br, run) && !e.awaitSellsFinal(w, name) {
+		return false
+	}
+	for _, s := range run.Sells {
+		if s.Submitted || s.Ambiguous {
+			// The feed can list sold shares for a second or two more; the
+			// entry's own read of the book decides, this only gives it the
+			// chance (AUD-071).
+			e.awaitBrokerBooksFlat(w, []string{name})
+			break
+		}
+	}
+	return true
+}
+
+// awaitSellsFinal polls this broker's pending exit trackers until none is left.
+func (e *Engine) awaitSellsFinal(w execWindow, name string) bool {
 	scope := []string{name}
 	for attempt := 0; ; attempt++ {
 		t, err := e.pendingExitFor(scope)
@@ -295,7 +320,7 @@ func (e *Engine) settleSells(w execWindow, name string) bool {
 			return false
 		}
 		if t == nil {
-			break
+			return true
 		}
 		if attempt >= exitFillWaitAttempts || e.deadlineExceeded(w, exitFillWaitStep) {
 			return false
@@ -303,10 +328,52 @@ func (e *Engine) settleSells(w execWindow, name string) bool {
 		e.pollOneTracker(t)
 		e.sleep(exitFillWaitStep)
 	}
-	// The feed can list sold shares for a second or two more; the entry's own
-	// read of the book decides, this only gives it the chance (AUD-071).
-	e.awaitBrokerBooksFlat(w, scope)
-	return true
+}
+
+// retryRejectedSells sends once more every sell of this cycle that the broker
+// turned down without executing a single share: refused at placement, or
+// accepted and then finished rejected, cancelled, expired or unknown to it.
+// Nothing changed hands, so the shares are still in the account and the
+// second SELL cannot double the first; a sell with any fill is not retried
+// (CORE §3.2). For a finished order the broker is asked about the order
+// itself: a tracker does not keep a fill it saw only in its last answer.
+func (e *Engine) retryRejectedSells(w execWindow, ev EvalResult, trigger, corr, name string, br Broker, run *BrokerRun) bool {
+	first := len(run.Sells)
+	for i := 0; i < first; i++ {
+		s := run.Sells[i]
+		if s.ClientOrderID != "" && e.DB.RecordedFillQty(s.ClientOrderID) > 0 {
+			continue
+		}
+		status := s.Status
+		switch {
+		case !s.Submitted && !s.Ambiguous && status == "rejected":
+			// refused at placement: no order exists, nothing filled
+		case s.Submitted && s.ClientOrderID != "":
+			status = fmt.Sprint(e.DB.GetOrderTracker(s.ClientOrderID)["status"])
+			switch status {
+			case "rejected", "cancelled", "expired":
+				detail, err := retryBrokerReadWindow(e, w, "order_detail", func(ctx context.Context) (map[string]any, error) {
+					return br.OrderDetail(ctx, s.ClientOrderID)
+				})
+				if err != nil || fillQtyFrom(detail) > 0 {
+					continue
+				}
+			case "terminal_absent": // the broker has no such order: nothing filled
+			default:
+				continue
+			}
+		default:
+			continue
+		}
+		run.Sells[i].Submitted = false
+		run.Sells[i].Status = status
+		run.Sells[i].Error = "отклонён брокером (" + status + ") — повтор"
+		e.logAuto("exit_rejected_retry", corr, map[string]any{
+			"broker": name, "symbol": s.Symbol, "clientOrderId": s.ClientOrderID, "status": status,
+		})
+		run.Sells = append(run.Sells, e.submitOne(w, ev, trigger, corr, name, br, "exit", s.Symbol))
+	}
+	return len(run.Sells) > first
 }
 
 // summarizeRuns fills the per-broker summary the SPA reads: each broker's main

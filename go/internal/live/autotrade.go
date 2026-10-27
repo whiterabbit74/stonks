@@ -593,8 +593,9 @@ func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg
 			// "Landed" only means the broker knows the id. An order it already
 			// rejected or cancelled did reach it, but nothing was bought or
 			// sold, and reporting Submitted here would tell the operator the
-			// order went out. Do not resend either: the id exists at the
-			// broker and the decision was the day's only one.
+			// order went out. Do not resend it here either: the id exists at
+			// the broker, and a sell turned down this way gets its one retry
+			// from the cycle, under a new id (CORE §3.2).
 			if st == "rejected" || st == "cancelled" {
 				e.logAuto("order_rejected_by_broker", "", map[string]any{
 					"symbol": symbol, "side": side, "clientOrderId": try.ClientOrderID,
