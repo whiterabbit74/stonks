@@ -17,9 +17,9 @@ func TestDetachedLegKeepsItsOwnExitDate(t *testing.T) {
 	}
 	buy("webull", "w1", "2026-10-20")
 	buy("robinhood", "r1", "2026-10-20")
-	if err := db.SaveOrderTracker(map[string]any{
-		"clientOrderId": "ws1", "symbol": "AAPL", "action": "exit", "status": "submitted",
-		"quantity": 1, "source": "test_sell", "dateKey": "2026-10-21", "broker": "webull",
+	if err := db.SaveOrderTracker(Tracker{
+		ClientOrderID: "ws1", Symbol: "AAPL", Action: "exit", Status: "submitted",
+		Quantity: 1, Source: "test_sell", DateKey: "2026-10-21", Broker: "webull",
 	}); err != nil {
 		t.Fatal(err)
 	}

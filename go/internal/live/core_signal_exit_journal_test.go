@@ -113,9 +113,9 @@ func TestMonitorExitIgnoresBrokerState(t *testing.T) {
 			br.Pos = []any{map[string]any{"symbol": "MSFT", "quantity": 4.0}}
 		},
 		"висящая заявка": func(db *store.DB, _ *MemoryBroker) {
-			if err := db.SaveOrderTracker(map[string]any{
-				"clientOrderId": "t1", "symbol": "MSFT", "action": "exit", "status": "submitted",
-				"quantity": 4.0, "broker": "webull", "dateKey": "2026-09-01",
+			if err := db.SaveOrderTracker(store.Tracker{
+				ClientOrderID: "t1", Symbol: "MSFT", Action: "exit", Status: "submitted",
+				Quantity: 4.0, Broker: "webull", DateKey: "2026-09-01",
 			}); err != nil {
 				t.Fatal(err)
 			}

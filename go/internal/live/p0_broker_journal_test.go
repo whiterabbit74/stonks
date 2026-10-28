@@ -173,9 +173,9 @@ func TestRobinhoodFillDoesNotCloseWebullLeg(t *testing.T) {
 		QuotePrice: 11.9, DateKey: "2026-09-01",
 	}
 	e.mu.Unlock()
-	e.recordFill(map[string]any{
-		"clientOrderId": "rh-sell", "symbol": "AAPL", "action": "exit",
-		"source": "t1", "dateKey": "2026-09-01", "quantity": 3.0,
+	e.recordFill(store.Tracker{
+		ClientOrderID: "rh-sell", Symbol: "AAPL", Action: "exit",
+		Source: "t1", DateKey: "2026-09-01", Quantity: 3.0,
 	}, map[string]any{"status": "filled", "avg_price": 11.9, "filled_qty": 3.0}, "filled")
 	p, _ := e.DB.GetPosition("aapl")
 	if p == nil || p.Status != "open" {

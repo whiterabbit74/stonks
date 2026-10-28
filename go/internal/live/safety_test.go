@@ -81,9 +81,9 @@ func TestPendingEntryBlocksOtherSymbol(t *testing.T) {
 	db, e, _ := testEngine(t, bars)
 	_ = db.SaveDataset("MSFT", "MSFT", "", "", bars, false)
 	_ = db.UpsertWatch(map[string]any{"symbol": "MSFT", "lowIBS": 0.9, "highIBS": 0.75})
-	_ = db.SaveOrderTracker(map[string]any{
-		"clientOrderId": "pend-aapl", "symbol": "AAPL", "action": "entry",
-		"status": "submitted", "quantity": 1, "dateKey": "2026-09-01",
+	_ = db.SaveOrderTracker(store.Tracker{
+		ClientOrderID: "pend-aapl", Symbol: "AAPL", Action: "entry",
+		Status: "submitted", Quantity: 1, DateKey: "2026-09-01",
 	})
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
@@ -181,10 +181,10 @@ func TestClosePositionGuardsPendingSell(t *testing.T) {
 	db, e, webull := testEngine(t, bars)
 	rh := &MemoryBroker{Pos: []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}}
 	e.Brokers = map[string]Broker{"webull": webull, "robinhood": rh}
-	if err := db.SaveOrderTracker(map[string]any{
-		"clientOrderId": "pend-rh-exit", "symbol": "AAPL", "action": "exit",
-		"status": "submitted", "quantity": 2, "dateKey": "2026-09-01",
-		"broker": "robinhood",
+	if err := db.SaveOrderTracker(store.Tracker{
+		ClientOrderID: "pend-rh-exit", Symbol: "AAPL", Action: "exit",
+		Status: "submitted", Quantity: 2, DateKey: "2026-09-01",
+		Broker: "robinhood",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -233,9 +233,9 @@ func TestResumePollsBeforeExpiringYesterday(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	bars := []types.OHLC{{Date: "2026-09-02", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
-	_ = db.SaveOrderTracker(map[string]any{
-		"clientOrderId": "old-fill", "symbol": "AAPL", "action": "entry",
-		"status": "submitted", "quantity": 1, "dateKey": "2026-09-01",
+	_ = db.SaveOrderTracker(store.Tracker{
+		ClientOrderID: "old-fill", Symbol: "AAPL", Action: "entry",
+		Status: "submitted", Quantity: 1, DateKey: "2026-09-01",
 	})
 	br := &MemoryBroker{FillStatus: "FILLED", FillQty: 1, FillPrice: 8.2}
 	br.Orders = []OrderResult{{ClientOrderID: "old-fill", Symbol: "AAPL", Side: "BUY", Quantity: 1, Submitted: true}}

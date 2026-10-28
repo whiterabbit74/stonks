@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"mktorder.com/go/internal/types"
+
+	"mktorder.com/go/internal/store"
 )
 
 // AUD-126: a submission whose status came back unknown kept its decision
@@ -42,9 +44,9 @@ func TestAUD126EntryAtZeroIBSIsJournaled(t *testing.T) {
 		CorrelationID: "c1", IBS: 0, Action: "entry", Symbol: "AAPL",
 		Quantity: 1, Broker: "webull", DateKey: "2026-09-01",
 	})
-	e.recordFill(map[string]any{
-		"clientOrderId": id, "symbol": "AAPL", "action": "entry",
-		"quantity": 1.0, "dateKey": "2026-09-01", "broker": "webull",
+	e.recordFill(store.Tracker{
+		ClientOrderID: id, Symbol: "AAPL", Action: "entry",
+		Quantity: 1.0, DateKey: "2026-09-01", Broker: "webull",
 	}, map[string]any{"status": "filled", "filled_qty": 1.0, "avg_price": 8}, "filled")
 	p, err := db.OpenPositionBySymbol("AAPL")
 	if err != nil || p == nil {

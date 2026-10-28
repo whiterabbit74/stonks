@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"mktorder.com/go/internal/types"
+
+	"mktorder.com/go/internal/store"
 )
 
 func TestOrderLandedRejectsForeignID(t *testing.T) {
@@ -127,8 +129,8 @@ func TestUnconfirmedFillPriceDoesNotUseQuote(t *testing.T) {
 	}
 	e.orderMeta[id] = orderMeta{Action: "entry", Symbol: "AAPL", Quantity: 1, QuotePrice: 8.2, DateKey: "2026-09-01", Broker: "webull"}
 	e.mu.Unlock()
-	e.recordFill(map[string]any{
-		"clientOrderId": id, "symbol": "AAPL", "action": "entry", "quantity": 1.0, "dateKey": "2026-09-01",
+	e.recordFill(store.Tracker{
+		ClientOrderID: id, Symbol: "AAPL", Action: "entry", Quantity: 1.0, DateKey: "2026-09-01",
 	}, map[string]any{"status": "filled", "filled_qty": 1.0}, "filled")
 	row, _ := e.DB.GetPosition(id)
 	if pv(row.EntryPrice) == 8.2 {
@@ -146,15 +148,15 @@ func TestPartialEntryUpsertsQuantity(t *testing.T) {
 	}
 	e.orderMeta[id] = orderMeta{Action: "entry", Symbol: "AAPL", Quantity: 10, Broker: "webull", DateKey: "2026-09-01"}
 	e.mu.Unlock()
-	e.recordFill(map[string]any{
-		"clientOrderId": id, "symbol": "AAPL", "action": "entry", "quantity": 10.0, "dateKey": "2026-09-01",
+	e.recordFill(store.Tracker{
+		ClientOrderID: id, Symbol: "AAPL", Action: "entry", Quantity: 10.0, DateKey: "2026-09-01",
 	}, map[string]any{"status": "filled", "filled_qty": 5.0, "avg_price": 8.2}, "filled")
 	row, _ := db.GetPosition(id)
 	if row.Quantity != 5 {
 		t.Fatalf("first partial %+v", row)
 	}
-	e.recordFill(map[string]any{
-		"clientOrderId": id, "symbol": "AAPL", "action": "entry", "quantity": 10.0, "dateKey": "2026-09-01",
+	e.recordFill(store.Tracker{
+		ClientOrderID: id, Symbol: "AAPL", Action: "entry", Quantity: 10.0, DateKey: "2026-09-01",
 	}, map[string]any{"status": "filled", "filled_qty": 10.0, "avg_price": 8.2}, "filled")
 	row, _ = db.GetPosition(id)
 	if row.Quantity != 10 {

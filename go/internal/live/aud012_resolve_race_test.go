@@ -19,7 +19,7 @@ func TestAUD004ResolveTrackerRacesPoll(t *testing.T) {
 	}
 	e.StopTrackers()
 	id := w.Orders[0].ClientOrderID
-	ordered := asFloat(trackerFor(t, e, id)["quantity"])
+	ordered := asFloat(trackerFor(t, e, id).Quantity)
 	w.SetDetail(id, map[string]any{
 		"status": "FILLED", "client_order_id": id,
 		"filled_qty": ordered, "filled_price": 8.25,

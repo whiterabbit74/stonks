@@ -28,9 +28,9 @@ func TestExitWithoutPriceLeavesPriceAndPnLUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e.recordFill(map[string]any{
-		"clientOrderId": "exit", "symbol": "AAPL", "action": "exit",
-		"quantity": 10.0, "broker": "webull", "dateKey": "2026-09-01",
+	e.recordFill(store.Tracker{
+		ClientOrderID: "exit", Symbol: "AAPL", Action: "exit",
+		Quantity: 10.0, Broker: "webull", DateKey: "2026-09-01",
 	}, map[string]any{"filled_qty": 10.0}, "filled")
 
 	p, err := db.GetPosition("p")

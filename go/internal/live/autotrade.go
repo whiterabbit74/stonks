@@ -676,11 +676,11 @@ func (e *Engine) recordOrderIntent(clientOrderID, symbol, side string, qty float
 	if dateKey == "" {
 		dateKey = tradingdate.TodayNYSE(e.now())
 	}
-	rec := map[string]any{
-		"clientOrderId": clientOrderID, "symbol": symbol, "action": action,
-		"status": "submitting", "quantity": qty, "source": meta.Source,
-		"dateKey": dateKey, "broker": broker,
-		"startedAt": e.now().UTC().Format(time.RFC3339Nano),
+	rec := store.Tracker{
+		ClientOrderID: clientOrderID, Symbol: symbol, Action: action,
+		Status: "submitting", Quantity: qty, Source: meta.Source,
+		DateKey: dateKey, Broker: broker,
+		StartedAt: e.now().UTC().Format(time.RFC3339Nano),
 	}
 	// SQLite здесь однопоточная и занятая запись — обычное дело; отказ от
 	// заявки из-за мгновенной блокировки был бы дороже самой заявки.
@@ -810,10 +810,10 @@ func (e *Engine) startTracking(res OrderResult, meta orderMeta) {
 	if broker == "" {
 		broker = "webull"
 	}
-	if err := e.DB.SaveOrderTracker(map[string]any{
-		"clientOrderId": res.ClientOrderID, "symbol": meta.Symbol, "action": meta.Action,
-		"status": "submitted", "quantity": meta.Quantity, "source": meta.Source, "dateKey": meta.DateKey,
-		"broker": broker, "startedAt": e.now().UTC().Format(time.RFC3339Nano),
+	if err := e.DB.SaveOrderTracker(store.Tracker{
+		ClientOrderID: res.ClientOrderID, Symbol: meta.Symbol, Action: meta.Action,
+		Status: "submitted", Quantity: meta.Quantity, Source: meta.Source, DateKey: meta.DateKey,
+		Broker: broker, StartedAt: e.now().UTC().Format(time.RFC3339Nano),
 	}); err != nil {
 		e.logAuto("tracker_persist_failed", meta.CorrelationID, map[string]any{
 			"clientOrderId": res.ClientOrderID, "broker": broker, "error": err.Error(),
@@ -1269,12 +1269,6 @@ func (e *Engine) Logs(limit int) (map[string]any, error) {
 	if brokerRaw == nil {
 		brokerRaw = []map[string]any{}
 	}
-	if pending == nil {
-		pending = []map[string]any{}
-	}
-	if recent == nil {
-		recent = []map[string]any{}
-	}
 	if len(autotrade) == 0 && len(monitor) == 0 && len(brokerRaw) == 0 {
 		for _, row := range logs {
 			msg := fmt.Sprint(row["message"])
@@ -1332,7 +1326,7 @@ func (e *Engine) manualOrder(br Broker, brokerName, symbol, side string, qty flo
 		delete(e.reservations, key)
 		e.mu.Unlock()
 	}()
-	var pending map[string]any
+	var pending *store.Tracker
 	var pendErr error
 	if action == "entry" {
 		pending, pendErr = e.DB.AnyPendingTrackerFor(brokerName)

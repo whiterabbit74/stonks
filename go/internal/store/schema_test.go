@@ -272,10 +272,10 @@ func TestOpenAddsRecordedQtyToOldDatabase(t *testing.T) {
 	if !db.HasColumn("order_trackers", "recorded_qty") {
 		t.Fatal("recorded_qty missing after upgrade from schema 6")
 	}
-	if err := db.SaveOrderTracker(map[string]any{
-		"clientOrderId": "c1", "symbol": "MSFT", "action": "exit",
-		"status": "working", "quantity": 4.0, "dateKey": "2026-09-09",
-		"startedAt": "2026-09-09T19:59:00Z",
+	if err := db.SaveOrderTracker(Tracker{
+		ClientOrderID: "c1", Symbol: "MSFT", Action: "exit",
+		Status: "working", Quantity: 4.0, DateKey: "2026-09-09",
+		StartedAt: "2026-09-09T19:59:00Z",
 	}); err != nil {
 		t.Fatal(err)
 	}

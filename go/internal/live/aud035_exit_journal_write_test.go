@@ -29,9 +29,9 @@ func TestExitJournalWriteFailureBlocksEntries(t *testing.T) {
 	if e.trackerPersistBlocked("webull") {
 		t.Fatal("setup: entries must not be blocked yet")
 	}
-	e.recordFill(map[string]any{
-		"clientOrderId": oid, "symbol": "AAPL", "action": "exit",
-		"quantity": 2.0, "dateKey": "2026-09-01", "broker": "webull",
+	e.recordFill(store.Tracker{
+		ClientOrderID: oid, Symbol: "AAPL", Action: "exit",
+		Quantity: 2.0, DateKey: "2026-09-01", Broker: "webull",
 	}, map[string]any{"filled_price": 11.0, "filled_qty": 2.0}, "filled")
 
 	if !e.trackerPersistBlocked("webull") {

@@ -40,9 +40,9 @@ func TestFillMessagesUseTrackerBroker(t *testing.T) {
 			Action: "entry", Symbol: "AAPL", Quantity: 10,
 			Broker: "robinhood", DateKey: "2026-09-01",
 		})
-		e.recordFill(map[string]any{
-			"clientOrderId": id, "symbol": "AAPL", "action": "entry",
-			"quantity": 10.0, "dateKey": "2026-09-01", "broker": "robinhood",
+		e.recordFill(store.Tracker{
+			ClientOrderID: id, Symbol: "AAPL", Action: "entry",
+			Quantity: 10.0, DateKey: "2026-09-01", Broker: "robinhood",
 		}, map[string]any{"status": "filled", "filled_qty": 4.0, "avg_price": 8.2}, "filled")
 		body := telegramBody(t, e)
 		if !strings.Contains(body, "Robinhood: частичное исполнение") {
@@ -58,9 +58,9 @@ func TestFillMessagesUseTrackerBroker(t *testing.T) {
 		seedOrderMeta(e, id, orderMeta{
 			Action: "entry", Symbol: "AAPL", Quantity: 10, DateKey: "2026-09-01",
 		})
-		e.recordFill(map[string]any{
-			"clientOrderId": id, "symbol": "AAPL", "action": "entry",
-			"quantity": 10.0, "dateKey": "2026-09-01", "broker": "robinhood",
+		e.recordFill(store.Tracker{
+			ClientOrderID: id, Symbol: "AAPL", Action: "entry",
+			Quantity: 10.0, DateKey: "2026-09-01", Broker: "robinhood",
 		}, map[string]any{"status": "filled", "filled_qty": 4.0, "avg_price": 8.2}, "filled")
 		body := telegramBody(t, e)
 		if !strings.Contains(body, "Robinhood: частичное исполнение") {
@@ -78,9 +78,9 @@ func TestFillMessagesUseTrackerBroker(t *testing.T) {
 			Action: "entry", Symbol: "AAPL", Quantity: 1,
 			Broker: "robinhood", QuotePrice: 8.2, DateKey: "2026-09-01",
 		})
-		e.recordFill(map[string]any{
-			"clientOrderId": id, "symbol": "AAPL", "action": "entry",
-			"quantity": 1.0, "dateKey": "2026-09-01", "broker": "robinhood",
+		e.recordFill(store.Tracker{
+			ClientOrderID: id, Symbol: "AAPL", Action: "entry",
+			Quantity: 1.0, DateKey: "2026-09-01", Broker: "robinhood",
 		}, map[string]any{"status": "filled", "filled_qty": 1.0, "avg_price": 9.0}, "filled")
 		body := telegramBody(t, e)
 		if !strings.Contains(body, "Robinhood: проскальзывание") {
@@ -111,9 +111,9 @@ func TestUnconfirmedFillPriceIsNullNotZero(t *testing.T) {
 		Action: "entry", Symbol: "AAPL", Quantity: 2,
 		QuotePrice: 8.2, DateKey: "2026-09-01", Broker: "robinhood",
 	})
-	e.recordFill(map[string]any{
-		"clientOrderId": id, "symbol": "AAPL", "action": "entry",
-		"quantity": 2.0, "dateKey": "2026-09-01", "broker": "robinhood",
+	e.recordFill(store.Tracker{
+		ClientOrderID: id, Symbol: "AAPL", Action: "entry",
+		Quantity: 2.0, DateKey: "2026-09-01", Broker: "robinhood",
 	}, map[string]any{"status": "filled", "filled_qty": 2.0}, "filled")
 
 	row, _ := e.DB.GetPosition(id)
@@ -149,9 +149,9 @@ func TestJournalSQLUpdateErrorBlocksEntry(t *testing.T) {
 		Action: "entry", Symbol: "MSFT", Quantity: 1,
 		Broker: "webull", DateKey: "2026-09-01",
 	})
-	e.recordFill(map[string]any{
-		"clientOrderId": id, "symbol": "MSFT", "action": "entry",
-		"quantity": 1.0, "dateKey": "2026-09-01", "broker": "webull",
+	e.recordFill(store.Tracker{
+		ClientOrderID: id, Symbol: "MSFT", Action: "entry",
+		Quantity: 1.0, DateKey: "2026-09-01", Broker: "webull",
 	}, map[string]any{"status": "filled", "filled_qty": 1.0, "avg_price": 8.2}, "filled")
 
 	if !e.trackerPersistBlocked("webull") {

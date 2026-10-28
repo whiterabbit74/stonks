@@ -213,46 +213,63 @@ func (d *DB) ListAutotradeLogsKind(kind string, limit int) ([]map[string]any, er
 // queue and booked its fill a second time (AUD-116).
 const terminalTrackerStatuses = `'filled','cancelled','canceled','rejected','expired','terminal_absent'`
 
-func (d *DB) SaveOrderTracker(rec map[string]any) error {
-	id := fmt.Sprint(rec["clientOrderId"])
-	if id == "" || id == "<nil>" {
+// Tracker is one order_trackers row. A NULL column reads as its zero value:
+// no quantity is 0, no source, trading date or start time is "". The json keys
+// are what the SPA reads from /api/autotrade/logs.
+type Tracker struct {
+	ClientOrderID string  `json:"clientOrderId"`
+	Symbol        string  `json:"symbol"`
+	Action        string  `json:"action"`
+	Status        string  `json:"status"`
+	Quantity      float64 `json:"quantity"`
+	Source        string  `json:"source"`
+	DateKey       string  `json:"dateKey"`
+	StartedAt     string  `json:"startedAt"`
+	Attempts      int     `json:"attempts"`
+	Broker        string  `json:"broker"`
+	UpdatedAt     string  `json:"-"`
+	RecordedQty   float64 `json:"-"`
+	RecordedPrice float64 `json:"-"`
+	LastFilledQty float64 `json:"-"`
+	LastFillPrice float64 `json:"-"`
+}
+
+// SaveOrderTracker inserts the tracker or, for an existing id, updates its
+// status, quantity and broker. Empty status means "submitted", empty start
+// means now, empty broker means Webull.
+func (d *DB) SaveOrderTracker(rec Tracker) error {
+	if strings.TrimSpace(rec.ClientOrderID) == "" {
 		return fmt.Errorf("clientOrderId required")
 	}
-	status := fmt.Sprint(rec["status"])
-	if status == "" || status == "<nil>" {
-		status = "submitted"
+	if rec.Status == "" {
+		rec.Status = "submitted"
 	}
-	started := fmt.Sprint(rec["startedAt"])
-	if started == "" || started == "<nil>" {
-		started = time.Now().UTC().Format(time.RFC3339Nano)
+	if rec.StartedAt == "" {
+		rec.StartedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	}
-	attempts := 0
-	if rec["attempts"] != nil {
-		attempts = int(asFloat(rec["attempts"]))
-	}
-	broker := fmt.Sprint(rec["broker"])
-	if broker == "" || broker == "<nil>" {
-		broker = "webull"
+	if rec.Broker == "" {
+		rec.Broker = "webull"
 	}
 	_, err := d.SQL.Exec(`INSERT INTO order_trackers (client_order_id, symbol, action, broker, status, quantity, source, date_key, started_at, attempts, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         ON CONFLICT(client_order_id) DO UPDATE SET
             status=CASE WHEN order_trackers.status IN (`+terminalTrackerStatuses+`) THEN order_trackers.status ELSE excluded.status END,
             quantity=excluded.quantity, broker=excluded.broker, updated_at=datetime('now')`,
-		id, SafeTicker(fmt.Sprint(rec["symbol"])), fmt.Sprint(rec["action"]), broker, status, rec["quantity"], rec["source"], rec["dateKey"], started, attempts)
+		rec.ClientOrderID, SafeTicker(rec.Symbol), rec.Action, rec.Broker, rec.Status, rec.Quantity, rec.Source, rec.DateKey, rec.StartedAt, rec.Attempts)
 	return err
 }
 
-func (d *DB) GetOrderTracker(clientOrderID string) map[string]any {
+// GetOrderTracker returns the tracker of this order, nil when there is none
+// or it cannot be read.
+func (d *DB) GetOrderTracker(clientOrderID string) *Tracker {
 	if strings.TrimSpace(clientOrderID) == "" {
 		return nil
 	}
-	row := d.SQL.QueryRow(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts, COALESCE(broker,'webull') FROM order_trackers WHERE client_order_id=?`, clientOrderID)
-	m, err := scanTracker(row, true)
-	if err != nil {
+	rows, err := d.listTrackers(`WHERE client_order_id=?`, clientOrderID)
+	if err != nil || len(rows) == 0 {
 		return nil
 	}
-	return m
+	return &rows[0]
 }
 
 func (d *DB) SetOrderTrackerStatus(clientOrderID, status string) error {
@@ -318,36 +335,16 @@ func (d *DB) ExpireStaleTrackers(todayYYYYMMDD string, maxAttempts int) (int, er
 	return int(n), err
 }
 
-func (d *DB) AnyPendingTracker() (map[string]any, error) {
+func (d *DB) AnyPendingTracker() (*Tracker, error) {
 	return d.AnyPendingTrackerFor("")
 }
 
-func (d *DB) FindPendingTracker(symbol, action string) (map[string]any, error) {
+func (d *DB) FindPendingTracker(symbol, action string) (*Tracker, error) {
 	return d.FindPendingTrackerBroker(symbol, action, "")
 }
 
-func (d *DB) listBlockingTrackers() ([]map[string]any, error) {
-	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts, COALESCE(broker,'webull')
-        FROM order_trackers WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired','terminal_absent') ORDER BY started_at DESC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []map[string]any
-	for rows.Next() {
-		row, err := scanTracker(rows, true)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, row)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if out == nil {
-		out = []map[string]any{}
-	}
-	return out, nil
+func (d *DB) listBlockingTrackers() ([]Tracker, error) {
+	return d.listTrackers(`WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired','terminal_absent') ORDER BY started_at DESC`)
 }
 
 // IsOwnOrder reports whether this engine placed the order. Every order it
@@ -367,34 +364,14 @@ func (d *DB) IsOwnOrder(clientOrderID string) (bool, error) {
 	return n > 0, nil
 }
 
-func (d *DB) ListPendingTrackers() ([]map[string]any, error) {
+func (d *DB) ListPendingTrackers() ([]Tracker, error) {
 	// execution_unknown stays in this list so PollTrackers/ResumeTrackers/
 	// expireStaleTrackers keep polling it: the broker's listing usually
 	// catches up and the next OrderDetail resolves the status on its own.
 	// 'unresolved' is the terminal dead-end expireStaleTrackers falls back to
 	// when even that never happens - it stops being polled and can only be
 	// cleared through POST /api/autotrade/trackers/{clientOrderId}/resolve.
-	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts, COALESCE(broker,'webull')
-        FROM order_trackers WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired','terminal_absent','unresolved') ORDER BY started_at DESC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []map[string]any
-	for rows.Next() {
-		row, err := scanTracker(rows, true)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, row)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if out == nil {
-		out = []map[string]any{}
-	}
-	return out, nil
+	return d.listTrackers(`WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired','terminal_absent','unresolved') ORDER BY started_at DESC`)
 }
 
 // NoteTrackerFill keeps the executed quantity a broker has confirmed for a
@@ -522,61 +499,45 @@ func claimFillTx(tx *sql.Tx, clientOrderID string, filled float64) (float64, err
 	return newly, nil
 }
 
-func (d *DB) ListRecentTrackers(limit int) ([]map[string]any, error) {
+func (d *DB) ListRecentTrackers(limit int) ([]Tracker, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts, COALESCE(broker,'webull')
-        FROM order_trackers ORDER BY started_at DESC LIMIT ?`, limit)
+	return d.listTrackers(`ORDER BY started_at DESC LIMIT ?`, limit)
+}
+
+// listTrackers reads the trackers the clause selects; never nil on success.
+func (d *DB) listTrackers(clause string, args ...any) ([]Tracker, error) {
+	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at,
+            attempts, COALESCE(broker,'webull'), updated_at, recorded_qty, recorded_price, last_filled_qty, last_fill_price
+        FROM order_trackers `+clause, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []map[string]any
+	out := []Tracker{}
 	for rows.Next() {
-		row, err := scanTracker(rows, true)
-		if err != nil {
+		var t Tracker
+		var source, dateKey, started, updated sql.NullString
+		var qty, recorded, recordedPrice, lastQty, lastPrice sql.NullFloat64
+		var attempts sql.NullInt64
+		if err := rows.Scan(&t.ClientOrderID, &t.Symbol, &t.Action, &t.Status, &qty, &source, &dateKey, &started,
+			&attempts, &t.Broker, &updated, &recorded, &recordedPrice, &lastQty, &lastPrice); err != nil {
 			return nil, err
 		}
-		out = append(out, row)
+		t.Quantity, t.Source, t.DateKey, t.StartedAt = qty.Float64, source.String, dateKey.String, started.String
+		t.Attempts, t.UpdatedAt = int(attempts.Int64), updated.String
+		t.RecordedQty, t.RecordedPrice = recorded.Float64, recordedPrice.Float64
+		t.LastFilledQty, t.LastFillPrice = lastQty.Float64, lastPrice.Float64
+		if t.Broker == "" {
+			t.Broker = "webull"
+		}
+		out = append(out, t)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	if out == nil {
-		out = []map[string]any{}
-	}
 	return out, nil
-}
-
-func scanTracker(s rowScanner, withAttempts bool) (map[string]any, error) {
-	var id, symbol, action, status string
-	var source, dateKey, started sql.NullString
-	var qty sql.NullFloat64
-	var attempts sql.NullInt64
-	var err error
-	var broker sql.NullString
-	if withAttempts {
-		err = s.Scan(&id, &symbol, &action, &status, &qty, &source, &dateKey, &started, &attempts, &broker)
-	} else {
-		err = s.Scan(&id, &symbol, &action, &status, &qty, &source, &dateKey, &started)
-	}
-	if err != nil {
-		return nil, err
-	}
-	n := 0
-	if attempts.Valid {
-		n = int(attempts.Int64)
-	}
-	b := "webull"
-	if broker.Valid && broker.String != "" {
-		b = broker.String
-	}
-	return map[string]any{
-		"clientOrderId": id, "symbol": symbol, "action": action, "status": status,
-		"quantity": nullF(qty), "source": nullS(source), "dateKey": nullS(dateKey), "startedAt": nullS(started),
-		"attempts": n, "broker": b,
-	}, nil
 }
 
 func (d *DB) AggregateState(chatID, dateKey string) (t11Sent, t1Sent bool) {

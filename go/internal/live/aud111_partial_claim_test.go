@@ -27,9 +27,9 @@ func TestPartialFillSurvivesJournalWriteFailure(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	tracker := map[string]any{
-		"clientOrderId": "x-exit", "symbol": "AAPL", "action": "exit", "status": "submitted",
-		"quantity": 10.0, "source": "telegram_t1", "dateKey": "2026-09-01", "broker": "webull",
+	tracker := store.Tracker{
+		ClientOrderID: "x-exit", Symbol: "AAPL", Action: "exit", Status: "submitted",
+		Quantity: 10.0, Source: "telegram_t1", DateKey: "2026-09-01", Broker: "webull",
 	}
 	if err := db.SaveOrderTracker(tracker); err != nil {
 		t.Fatal(err)

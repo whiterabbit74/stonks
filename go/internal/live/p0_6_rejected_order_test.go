@@ -86,7 +86,7 @@ func TestPlaceMarketDoesNotReportRejectedOrderAsSubmitted(t *testing.T) {
 			if got == nil {
 				t.Fatal("the pre-send intent must survive as an audit trail")
 			}
-			if st := fmt.Sprint(got["status"]); !IsFinalOrderStatus(st) {
+			if st := fmt.Sprint(got.Status); !IsFinalOrderStatus(st) {
 				t.Fatalf("a rejected order must leave a terminal tracker, got %q", st)
 			}
 			pending, err := e.DB.ListPendingTrackers()

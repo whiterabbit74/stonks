@@ -336,7 +336,7 @@ func (e *Engine) awaitSellsFinal(w execWindow, name string) bool {
 		if attempt >= exitFillWaitAttempts || e.deadlineExceeded(w, exitFillWaitStep) {
 			return false
 		}
-		e.pollOneTracker(t)
+		e.pollOneTracker(*t)
 		e.sleep(exitFillWaitStep)
 	}
 }
@@ -360,7 +360,10 @@ func (e *Engine) retryRejectedSells(w execWindow, ev EvalResult, trigger, corr, 
 		case !s.Submitted && !s.Ambiguous && status == "rejected":
 			// refused at placement: no order exists, nothing filled
 		case s.Submitted && s.ClientOrderID != "":
-			status = fmt.Sprint(e.DB.GetOrderTracker(s.ClientOrderID)["status"])
+			status = ""
+			if tr := e.DB.GetOrderTracker(s.ClientOrderID); tr != nil {
+				status = tr.Status
+			}
 			switch status {
 			case "rejected", "cancelled", "expired":
 				detail, err := retryBrokerReadWindow(e, w, "order_detail", func(ctx context.Context) (map[string]any, error) {
@@ -459,7 +462,7 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 		delete(e.reservations, key)
 		e.mu.Unlock()
 	}()
-	var pending map[string]any
+	var pending *store.Tracker
 	var pendErr error
 	if action == "entry" {
 		if brokerName != "" {
@@ -490,7 +493,7 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 		if action != "entry" {
 			errKey = "pending_" + action + "_tracker_exists"
 		}
-		ev.Broker = map[string]any{"submitted": false, "error": errKey, "clientOrderId": pending["clientOrderId"]}
+		ev.Broker = map[string]any{"submitted": false, "error": errKey, "clientOrderId": pending.ClientOrderID}
 		e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_tracker", "broker": brokerName})
 		return ev
 	}

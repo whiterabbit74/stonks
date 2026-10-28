@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"mktorder.com/go/internal/store"
 )
 
 // TestPollTrackerMissingNamedBrokerDoesNotUseDefault is AU-P0-2: a robinhood
@@ -15,10 +17,10 @@ import (
 func TestFinalizeDoesNotRejournalWhenStatusStampFails(t *testing.T) {
 	db, e, br := testEngine(t, entryBars)
 	id := "oid-stamp-fail"
-	if err := e.DB.SaveOrderTracker(map[string]any{
-		"clientOrderId": id, "symbol": "AAPL", "action": "entry",
-		"status": "submitted", "quantity": 1.0, "source": "t1", "dateKey": "2026-09-01",
-		"broker": "webull", "startedAt": e.now().UTC().Format(time.RFC3339Nano),
+	if err := e.DB.SaveOrderTracker(store.Tracker{
+		ClientOrderID: id, Symbol: "AAPL", Action: "entry",
+		Status: "submitted", Quantity: 1.0, Source: "t1", DateKey: "2026-09-01",
+		Broker: "webull", StartedAt: e.now().UTC().Format(time.RFC3339Nano),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -67,10 +69,10 @@ func TestFinalizeDoesNotRejournalWhenStatusStampFails(t *testing.T) {
 func TestPollTrackerOrderedQtyIsNotAFill(t *testing.T) {
 	_, e, br := testEngine(t, entryBars)
 	id := "oid-qty-only"
-	if err := e.DB.SaveOrderTracker(map[string]any{
-		"clientOrderId": id, "symbol": "AAPL", "action": "entry",
-		"status": "submitted", "quantity": 2.0, "source": "t1", "dateKey": "2026-09-01",
-		"broker": "webull", "startedAt": e.now().UTC().Format(time.RFC3339Nano),
+	if err := e.DB.SaveOrderTracker(store.Tracker{
+		ClientOrderID: id, Symbol: "AAPL", Action: "entry",
+		Status: "submitted", Quantity: 2.0, Source: "t1", DateKey: "2026-09-01",
+		Broker: "webull", StartedAt: e.now().UTC().Format(time.RFC3339Nano),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -92,10 +94,10 @@ func TestPollTrackerMissingNamedBrokerDoesNotUseDefault(t *testing.T) {
 		t.Fatal("want MemoryTelegram")
 	}
 	journalAAPL(t, e, "rh-oid", "robinhood", 2)
-	if err := e.DB.SaveOrderTracker(map[string]any{
-		"clientOrderId": "rh-oid", "symbol": "AAPL", "action": "entry",
-		"status": "submitted", "quantity": 2.0, "source": "t1", "dateKey": "2026-09-01",
-		"broker": "robinhood", "startedAt": e.now().UTC().Format(time.RFC3339Nano),
+	if err := e.DB.SaveOrderTracker(store.Tracker{
+		ClientOrderID: "rh-oid", Symbol: "AAPL", Action: "entry",
+		Status: "submitted", Quantity: 2.0, Source: "t1", DateKey: "2026-09-01",
+		Broker: "robinhood", StartedAt: e.now().UTC().Format(time.RFC3339Nano),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -149,10 +151,10 @@ func TestPollTrackerMissingNamedBrokerDoesNotUseDefault(t *testing.T) {
 func TestPollTrackerUnknownRHDetailRecoversFillFromRHHistory(t *testing.T) {
 	e, webull, rh := dualBrokerEngine(t, entryBars)
 	id := "rh-unknown-detail"
-	if err := e.DB.SaveOrderTracker(map[string]any{
-		"clientOrderId": id, "symbol": "AAPL", "action": "entry",
-		"status": "submitted", "quantity": 2.0, "source": "t1", "dateKey": "2026-09-01",
-		"broker": "robinhood", "startedAt": e.now().UTC().Format(time.RFC3339Nano),
+	if err := e.DB.SaveOrderTracker(store.Tracker{
+		ClientOrderID: id, Symbol: "AAPL", Action: "entry",
+		Status: "submitted", Quantity: 2.0, Source: "t1", DateKey: "2026-09-01",
+		Broker: "robinhood", StartedAt: e.now().UTC().Format(time.RFC3339Nano),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -193,17 +195,17 @@ func TestFinalizeTrackerStatusUsesBrokerLabel(t *testing.T) {
 	tg := e.Telegram.(*MemoryTelegram)
 
 	tg.Reset()
-	e.finalizeTrackerStatus(map[string]any{
-		"clientOrderId": "rh-fill", "symbol": "AAPL", "action": "entry",
-		"source": "t1", "quantity": 2.0, "broker": "robinhood",
+	e.finalizeTrackerStatus(store.Tracker{
+		ClientOrderID: "rh-fill", Symbol: "AAPL", Action: "entry",
+		Source: "t1", Quantity: 2.0, Broker: "robinhood",
 	}, map[string]any{"status": "FILLED", "avg_price": 8.2, "filled_qty": 2.0}, "filled")
 	assertTelegramContains(t, tg, "<b>Robinhood</b>: куплено 2 AAPL по $8.20")
 	assertTelegramOmits(t, tg, "Webull")
 
 	tg.Reset()
-	e.finalizeTrackerStatus(map[string]any{
-		"clientOrderId": "rh-rej", "symbol": "AAPL", "action": "entry",
-		"source": "t1", "quantity": 1.0, "broker": "robinhood",
+	e.finalizeTrackerStatus(store.Tracker{
+		ClientOrderID: "rh-rej", Symbol: "AAPL", Action: "entry",
+		Source: "t1", Quantity: 1.0, Broker: "robinhood",
 	}, nil, "rejected")
 	assertTelegramContains(t, tg, "<b>Robinhood</b>: заявка на покупку AAPL — отклонена")
 	assertTelegramOmits(t, tg, "Webull")
@@ -238,10 +240,10 @@ func TestExecutionUnknownAlertsOnlyOnce(t *testing.T) {
 		t.Fatal("want MemoryTelegram")
 	}
 	journalAAPL(t, e, "rh-oid", "robinhood", 2)
-	if err := e.DB.SaveOrderTracker(map[string]any{
-		"clientOrderId": "rh-oid", "symbol": "AAPL", "action": "entry",
-		"status": "submitted", "quantity": 2.0, "source": "t1", "dateKey": "2026-09-01",
-		"broker": "robinhood", "startedAt": e.now().UTC().Format(time.RFC3339Nano),
+	if err := e.DB.SaveOrderTracker(store.Tracker{
+		ClientOrderID: "rh-oid", Symbol: "AAPL", Action: "entry",
+		Status: "submitted", Quantity: 2.0, Source: "t1", DateKey: "2026-09-01",
+		Broker: "robinhood", StartedAt: e.now().UTC().Format(time.RFC3339Nano),
 	}); err != nil {
 		t.Fatal(err)
 	}

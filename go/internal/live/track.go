@@ -124,7 +124,7 @@ func (e *Engine) ResumeTrackers() {
 		return
 	}
 	for _, t := range pending {
-		e.TrackSubmitted(fmt.Sprint(t["clientOrderId"]))
+		e.TrackSubmitted(t.ClientOrderID)
 	}
 }
 
@@ -140,11 +140,11 @@ func (e *Engine) expireStaleTrackers() {
 	}
 	n := 0
 	for _, t := range pending {
-		attempts := int(asFloat(t["attempts"]))
-		dk := fmt.Sprint(t["dateKey"])
-		staleDay := dk != "" && dk != "<nil>" && today != "" && dk < today
+		attempts := int(t.Attempts)
+		dk := t.DateKey
+		staleDay := dk != "" && today != "" && dk < today
 		maxed := attempts >= 64
-		if fmt.Sprint(t["status"]) == "execution_unknown" {
+		if t.Status == "execution_unknown" {
 			// execution_unknown must not expire on a timer the way a normal
 			// stuck tracker does: expiring it here would make finalizeTracker
 			// delete a phantom journal row for an order that may well have
@@ -157,10 +157,10 @@ func (e *Engine) expireStaleTrackers() {
 			if !staleDay {
 				continue
 			}
-			id := fmt.Sprint(t["clientOrderId"])
+			id := t.ClientOrderID
 			e.pollTracker(t)
 			after := e.DB.GetOrderTracker(id)
-			if after == nil || fmt.Sprint(after["status"]) != "execution_unknown" {
+			if after == nil || after.Status != "execution_unknown" {
 				// The broker answered and pollTracker already finalized the
 				// tracker (filled / terminal_absent / etc).
 				continue
@@ -188,7 +188,7 @@ func (e *Engine) expireStaleTrackers() {
 }
 
 func (e *Engine) TrackSubmitted(clientOrderID string) {
-	if clientOrderID == "" || clientOrderID == "<nil>" || len(e.brokerMap()) == 0 {
+	if clientOrderID == "" || len(e.brokerMap()) == 0 {
 		return
 	}
 	e.mu.Lock()
@@ -259,7 +259,7 @@ func (e *Engine) trackerWheel(clientOrderID string) {
 					})
 				}
 			}()
-			var rec map[string]any
+			var rec *store.Tracker
 			pending, err := e.DB.ListPendingTrackers()
 			if err != nil {
 				e.logAuto("tracker_pending_read_failed", e.metaCorr(clientOrderID), map[string]any{
@@ -267,9 +267,9 @@ func (e *Engine) trackerWheel(clientOrderID string) {
 				})
 				return
 			}
-			for _, t := range pending {
-				if fmt.Sprint(t["clientOrderId"]) == clientOrderID {
-					rec = t
+			for i := range pending {
+				if pending[i].ClientOrderID == clientOrderID {
+					rec = &pending[i]
 					break
 				}
 			}
@@ -281,7 +281,7 @@ func (e *Engine) trackerWheel(clientOrderID string) {
 				done = true
 				return
 			}
-			if e.pollOneTracker(rec) {
+			if e.pollOneTracker(*rec) {
 				done = true
 			}
 		}()
@@ -300,7 +300,7 @@ func (e *Engine) trackerWheel(clientOrderID string) {
 		return
 	}
 	for _, t := range pending {
-		if fmt.Sprint(t["clientOrderId"]) == clientOrderID {
+		if t.ClientOrderID == clientOrderID {
 			e.finalizeTracker(t, "expired")
 			e.logAuto("order_tracking_finished", e.metaCorr(clientOrderID), map[string]any{
 				"clientOrderId": clientOrderID, "status": "expired", "reason": "max_attempts",
@@ -310,18 +310,18 @@ func (e *Engine) trackerWheel(clientOrderID string) {
 	}
 }
 
-func (e *Engine) pollOneTracker(t map[string]any) bool {
+func (e *Engine) pollOneTracker(t store.Tracker) bool {
 	done, err := e.pollTracker(t)
 	if err != nil {
-		e.logAuto("tracker_poll_failed", e.metaCorr(fmt.Sprint(t["clientOrderId"])), map[string]any{
-			"clientOrderId": t["clientOrderId"], "error": err.Error(),
+		e.logAuto("tracker_poll_failed", e.metaCorr(t.ClientOrderID), map[string]any{
+			"clientOrderId": t.ClientOrderID, "error": err.Error(),
 		})
 	}
 	return done
 }
 
-func (e *Engine) pollTracker(t map[string]any) (bool, error) {
-	id := fmt.Sprint(t["clientOrderId"])
+func (e *Engine) pollTracker(t store.Tracker) (bool, error) {
+	id := t.ClientOrderID
 	if id == "" {
 		return true, nil
 	}
@@ -401,7 +401,7 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 		// A fully executed quantity is proof of a fill regardless of what the
 		// broker calls the state, so an unrecognised status word cannot leave a
 		// real position polling until it "expires".
-		if ordered := asFloat(t["quantity"]); ordered > 0 && fillQtyFrom(detail) >= ordered-1e-9 {
+		if ordered := t.Quantity; ordered > 0 && fillQtyFrom(detail) >= ordered-1e-9 {
 			status = "filled"
 		}
 	}
@@ -421,7 +421,7 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 			}
 		}
 		e.logAuto("order_poll", e.metaCorr(id), map[string]any{
-			"clientOrderId": id, "status": status, "symbol": t["symbol"],
+			"clientOrderId": id, "status": status, "symbol": t.Symbol,
 		})
 		n, aerr := e.DB.BumpOrderTrackerAttempts(id)
 		if aerr != nil {
@@ -439,9 +439,9 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 	return true, nil
 }
 
-func listingLagExpired(t map[string]any, now time.Time) bool {
-	started := strings.TrimSpace(fmt.Sprint(t["startedAt"]))
-	if started == "" || started == "<nil>" {
+func listingLagExpired(t store.Tracker, now time.Time) bool {
+	started := strings.TrimSpace(t.StartedAt)
+	if started == "" {
 		return false
 	}
 	ts, err := time.Parse(time.RFC3339Nano, started)
@@ -454,7 +454,7 @@ func listingLagExpired(t map[string]any, now time.Time) bool {
 	return !ts.IsZero() && now.Sub(ts) >= ListingLagWait
 }
 
-func (e *Engine) listingLagExpired(t map[string]any) bool {
+func (e *Engine) listingLagExpired(t store.Tracker) bool {
 	now := time.Now()
 	if e != nil {
 		now = e.now()
@@ -462,18 +462,11 @@ func (e *Engine) listingLagExpired(t map[string]any) bool {
 	return listingLagExpired(t, now)
 }
 
-func trackerBrokerName(t map[string]any) string {
-	if t == nil {
-		return ""
-	}
-	name := strings.TrimSpace(fmt.Sprint(t["broker"]))
-	if name == "" || name == "<nil>" {
-		return ""
-	}
-	return name
+func trackerBrokerName(t store.Tracker) string {
+	return strings.TrimSpace(t.Broker)
 }
 
-func trackerBrokerLabel(t map[string]any) string {
+func trackerBrokerLabel(t store.Tracker) string {
 	name := trackerBrokerName(t)
 	if name == "" {
 		name = "webull"
@@ -482,11 +475,11 @@ func trackerBrokerLabel(t map[string]any) string {
 }
 
 // brokerForTracker returns the attached broker named on the tracker. A
-// non-empty t["broker"] whose BrokerNamed lookup is nil is not replaced by
+// non-empty t.Broker whose BrokerNamed lookup is nil is not replaced by
 // defaultBroker — the caller must treat that as disconnected.
 // Unlabeled rows are pre-broker-name Webull trackers; defaultBroker is that
 // Webull adapter (e.Broker), not a stand-in for a named other broker.
-func (e *Engine) brokerForTracker(t map[string]any) Broker {
+func (e *Engine) brokerForTracker(t store.Tracker) Broker {
 	if name := trackerBrokerName(t); name != "" {
 		return e.BrokerNamed(name)
 	}
@@ -497,19 +490,19 @@ func (e *Engine) brokerForTracker(t map[string]any) Broker {
 // before this poll. The wheel keeps polling such a tracker, so sending the
 // Telegram alert unconditionally repeated the same message every cycle until
 // an operator resolved it by hand.
-func alreadyUnknown(t map[string]any) bool {
-	return strings.TrimSpace(fmt.Sprint(t["status"])) == "execution_unknown"
+func alreadyUnknown(t store.Tracker) bool {
+	return strings.TrimSpace(t.Status) == "execution_unknown"
 }
 
-func (e *Engine) markBrokerDisconnected(t map[string]any) {
-	id := fmt.Sprint(t["clientOrderId"])
+func (e *Engine) markBrokerDisconnected(t store.Tracker) {
+	id := t.ClientOrderID
 	name := trackerBrokerName(t)
 	repeat := alreadyUnknown(t)
 	if err := e.stampTrackerStatus(id, "execution_unknown"); err != nil {
 		e.logAuto("order_execution_unknown_persist_failed", e.metaCorr(id), map[string]any{"clientOrderId": id, "error": err.Error()})
 	}
 	e.logAuto("order_execution_unknown", e.metaCorr(id), map[string]any{
-		"clientOrderId": id, "symbol": t["symbol"], "action": t["action"],
+		"clientOrderId": id, "symbol": t.Symbol, "action": t.Action,
 		"broker": name, "error": "broker_not_connected",
 	})
 	if repeat {
@@ -517,11 +510,11 @@ func (e *Engine) markBrokerDisconnected(t map[string]any) {
 	}
 	_ = e.Send(e.chat(), fmt.Sprintf(
 		"<b>Статус заявки неизвестен</b>\n%s • %s\nclientOrderId: %s\nБрокер %s не подключён. Заявка не опрашивалась, вход заблокирован.",
-		t["symbol"], t["action"], id, brokerLabel(name)))
+		t.Symbol, t.Action, id, brokerLabel(name)))
 }
 
-func (e *Engine) markExecutionUnknown(t map[string]any, cause error) {
-	id := fmt.Sprint(t["clientOrderId"])
+func (e *Engine) markExecutionUnknown(t store.Tracker, cause error) {
+	id := t.ClientOrderID
 	repeat := alreadyUnknown(t)
 	if err := e.stampTrackerStatus(id, "execution_unknown"); err != nil {
 		e.logAuto("order_execution_unknown_persist_failed", e.metaCorr(id), map[string]any{"clientOrderId": id, "error": err.Error()})
@@ -531,14 +524,14 @@ func (e *Engine) markExecutionUnknown(t map[string]any, cause error) {
 		msg = cause.Error()
 	}
 	e.logAuto("order_execution_unknown", e.metaCorr(id), map[string]any{
-		"clientOrderId": id, "symbol": t["symbol"], "action": t["action"], "error": msg,
+		"clientOrderId": id, "symbol": t.Symbol, "action": t.Action, "error": msg,
 	})
 	if repeat {
 		return
 	}
 	_ = e.Send(e.chat(), fmt.Sprintf(
 		"<b>Статус заявки неизвестен</b>\n%s • %s\nclientOrderId: %s\nЛистинг брокера не подтвердил заявку. Повтор не отправлен, вход заблокирован.",
-		t["symbol"], t["action"], id))
+		t.Symbol, t.Action, id))
 }
 
 // resolvableTrackerStatus reports whether ResolveTracker may act on a
@@ -563,7 +556,7 @@ func resolvableTrackerStatus(status string) bool {
 // outcome "filled" behaves like a confirmed fill from a synthetic detail
 // payload, so recordFill journals it exactly as a normal fill would. note is
 // mandatory and is recorded in autotrade_logs alongside the outcome.
-func (e *Engine) ResolveTracker(clientOrderID, outcome, note string, filledPrice, filledQty float64) (map[string]any, error) {
+func (e *Engine) ResolveTracker(clientOrderID, outcome, note string, filledPrice, filledQty float64) (*store.Tracker, error) {
 	if e == nil || e.DB == nil {
 		return nil, fmt.Errorf("engine not configured")
 	}
@@ -582,13 +575,13 @@ func (e *Engine) ResolveTracker(clientOrderID, outcome, note string, filledPrice
 	if t == nil {
 		return nil, fmt.Errorf("tracker not found")
 	}
-	if !resolvableTrackerStatus(fmt.Sprint(t["status"])) {
+	if !resolvableTrackerStatus(t.Status) {
 		return nil, fmt.Errorf("tracker already resolved")
 	}
 	corr := e.metaCorr(clientOrderID)
 	var done bool
 	if outcome == "absent" {
-		done = e.finalizeTrackerAsIs(t, nil, "terminal_absent")
+		done = e.finalizeTrackerAsIs(*t, nil, "terminal_absent")
 	} else {
 		detail := map[string]any{}
 		if filledPrice > 0 {
@@ -597,7 +590,7 @@ func (e *Engine) ResolveTracker(clientOrderID, outcome, note string, filledPrice
 		if filledQty > 0 {
 			detail["filled_qty"] = filledQty
 		}
-		done = e.finalizeTrackerAsIs(t, detail, "filled")
+		done = e.finalizeTrackerAsIs(*t, detail, "filled")
 	}
 	// Отказ записи исполнения или статуса — не «разрешено»: оператор получал
 	// ok, а заявка оставалась висеть (AUD-163).
@@ -606,7 +599,7 @@ func (e *Engine) ResolveTracker(clientOrderID, outcome, note string, filledPrice
 	}
 	e.logAuto("tracker_resolved_manually", corr, map[string]any{
 		"clientOrderId": clientOrderID, "outcome": outcome, "note": note, "author": "operator",
-		"symbol": t["symbol"], "action": t["action"], "broker": t["broker"],
+		"symbol": t.Symbol, "action": t.Action, "broker": t.Broker,
 	})
 	return e.DB.GetOrderTracker(clientOrderID), nil
 }
@@ -621,7 +614,7 @@ func (e *Engine) stampTrackerStatus(id, status string) error {
 	return err
 }
 
-func (e *Engine) finalizeTracker(t map[string]any, status string) bool {
+func (e *Engine) finalizeTracker(t store.Tracker, status string) bool {
 	return e.finalizeTrackerStatus(t, nil, status)
 }
 
@@ -633,9 +626,9 @@ func (e *Engine) finalizeTracker(t map[string]any, status string) bool {
 // broker confirmed while the order was working. Ending it on nothing dropped
 // shares already bought or sold from the journal (AUD-135). "filled" without
 // a quantity means the whole order and keeps its own fallback.
-func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, status string) bool {
+func (e *Engine) finalizeTrackerStatus(t store.Tracker, detail map[string]any, status string) bool {
 	if status != "filled" && !(fillQtyFrom(detail) > 0) {
-		id := fmt.Sprint(t["clientOrderId"])
+		id := t.ClientOrderID
 		qty, price, err := e.DB.TrackerFill(id)
 		if err != nil {
 			e.logAuto("tracker_fill_read_failed", e.metaCorr(id), map[string]any{
@@ -660,8 +653,8 @@ func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, 
 
 // finalizeTrackerAsIs is finalizeTrackerStatus without the last known fill:
 // for an operator's resolution, which states the outcome itself.
-func (e *Engine) finalizeTrackerAsIs(t map[string]any, detail map[string]any, status string) bool {
-	id := fmt.Sprint(t["clientOrderId"])
+func (e *Engine) finalizeTrackerAsIs(t store.Tracker, detail map[string]any, status string) bool {
+	id := t.ClientOrderID
 	// Record the trade before marking the tracker final so a waiter that
 	// keys off pending status cannot observe a filled tracker with no row.
 	if !e.recordFill(t, detail, status) {
@@ -679,7 +672,7 @@ func (e *Engine) finalizeTrackerAsIs(t map[string]any, detail map[string]any, st
 		return false
 	}
 	e.logAuto("order_tracking_finished", e.metaCorr(id), map[string]any{
-		"clientOrderId": id, "status": status, "symbol": t["symbol"], "action": t["action"],
+		"clientOrderId": id, "status": status, "symbol": t.Symbol, "action": t.Action,
 	})
 	_ = e.Send(e.chat(), trackerNoticeText(t, detail, status))
 	if result != "" {
@@ -694,14 +687,14 @@ func (e *Engine) finalizeTrackerAsIs(t map[string]any, detail map[string]any, st
 // trackerNoticeText is the operator's line for an order that reached a final
 // status: "Robinhood: продано 1 MSFT по $535.12". The source is named only when
 // the order did not come from the regular T-1 cycle.
-func trackerNoticeText(t map[string]any, detail map[string]any, status string) string {
-	sym := store.SafeTicker(fmt.Sprint(t["symbol"]))
-	exit := fmt.Sprint(t["action"]) == "exit"
+func trackerNoticeText(t store.Tracker, detail map[string]any, status string) string {
+	sym := store.SafeTicker(t.Symbol)
+	exit := t.Action == "exit"
 	var text string
 	if status == "filled" {
 		qty := fillQtyFrom(detail)
 		if !(qty > 0) {
-			qty = asFloat(t["quantity"])
+			qty = t.Quantity
 		}
 		price := "— цена не подтверждена"
 		if p := fillPriceFrom(detail); p > 0 {
@@ -722,7 +715,7 @@ func trackerNoticeText(t map[string]any, detail map[string]any, status string) s
 		}
 		text = fmt.Sprintf("<b>%s</b>: заявка на %s %s — %s", trackerBrokerLabel(t), kind, sym, trackerStatusText(status))
 	}
-	if src := strings.TrimSpace(fmt.Sprint(t["source"])); src != "" && src != "<nil>" && src != "telegram_t1" {
+	if src := strings.TrimSpace(t.Source); src != "" && src != "telegram_t1" {
 		text += "\nисточник: " + html.EscapeString(src)
 	}
 	return text
@@ -861,7 +854,7 @@ func (e *Engine) awaitBrokerBooksFlat(w execWindow, brokers []string) {
 }
 
 // pendingExitFor returns the first unfilled exit tracker on the given brokers.
-func (e *Engine) pendingExitFor(brokers []string) (map[string]any, error) {
+func (e *Engine) pendingExitFor(brokers []string) (*store.Tracker, error) {
 	for _, b := range brokerScope(brokers) {
 		t, err := e.DB.FindPendingTrackerBroker("", "exit", b)
 		if err != nil || t != nil {

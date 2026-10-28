@@ -10,7 +10,7 @@ import (
 	"mktorder.com/go/internal/store"
 )
 
-func partialExitEngine(t *testing.T, withPosition bool) (*Engine, *store.DB, *MemoryTelegram, map[string]any) {
+func partialExitEngine(t *testing.T, withPosition bool) (*Engine, *store.DB, *MemoryTelegram, store.Tracker) {
 	t.Helper()
 	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
@@ -31,9 +31,9 @@ func partialExitEngine(t *testing.T, withPosition bool) (*Engine, *store.DB, *Me
 			t.Fatal(err)
 		}
 	}
-	tracker := map[string]any{
-		"clientOrderId": "x-exit", "symbol": "AAPL", "action": "exit", "status": "submitted",
-		"quantity": 10.0, "source": "telegram_t1", "dateKey": "2026-09-01", "broker": "webull",
+	tracker := store.Tracker{
+		ClientOrderID: "x-exit", Symbol: "AAPL", Action: "exit", Status: "submitted",
+		Quantity: 10.0, Source: "telegram_t1", DateKey: "2026-09-01", Broker: "webull",
 	}
 	if err := db.SaveOrderTracker(tracker); err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestPartialExitWithoutPriceIsJournaled(t *testing.T) {
 	if part.Quantity != 4 || part.ExitPrice != nil || part.PnLAbsolute != nil {
 		t.Fatalf("closed part = %+v", part)
 	}
-	if got := fmt.Sprint(db.GetOrderTracker("x-exit")["status"]); got != "cancelled" {
+	if got := fmt.Sprint(db.GetOrderTracker("x-exit").Status); got != "cancelled" {
 		t.Fatalf("tracker status = %s", got)
 	}
 }
@@ -106,14 +106,14 @@ func TestTrackerStaysPendingWhenJournalFails(t *testing.T) {
 	}
 	detail := map[string]any{"status": "CANCELLED", "filled_qty": 4.0, "filled_price": 11.0}
 	e.finalizeTrackerStatus(tracker, detail, "cancelled")
-	if got := fmt.Sprint(db.GetOrderTracker("x-exit")["status"]); got != "submitted" {
+	if got := fmt.Sprint(db.GetOrderTracker("x-exit").Status); got != "submitted" {
 		t.Fatalf("tracker went %s over an unrecorded fill", got)
 	}
 	if _, err := db.SQL.Exec(`DROP TRIGGER fail`); err != nil {
 		t.Fatal(err)
 	}
 	e.finalizeTrackerStatus(tracker, detail, "cancelled")
-	if closedPart(t, db).Quantity != 4 || fmt.Sprint(db.GetOrderTracker("x-exit")["status"]) != "cancelled" {
+	if closedPart(t, db).Quantity != 4 || fmt.Sprint(db.GetOrderTracker("x-exit").Status) != "cancelled" {
 		t.Fatal("retry did not journal the fill")
 	}
 }

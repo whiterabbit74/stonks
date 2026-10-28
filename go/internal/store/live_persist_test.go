@@ -10,9 +10,9 @@ func TestPendingTrackersListAndExpire(t *testing.T) {
 	db := openTestDB(t)
 	mustSaveTracker := func(id, symbol, status, dateKey string, attempts int) {
 		t.Helper()
-		if err := db.SaveOrderTracker(map[string]any{
-			"clientOrderId": id, "symbol": symbol, "action": "entry",
-			"status": status, "quantity": 1.0, "source": "test", "dateKey": dateKey,
+		if err := db.SaveOrderTracker(Tracker{
+			ClientOrderID: id, Symbol: symbol, Action: "entry",
+			Status: status, Quantity: 1.0, Source: "test", DateKey: dateKey,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -34,15 +34,15 @@ func TestPendingTrackersListAndExpire(t *testing.T) {
 	if len(pending) != 3 {
 		t.Fatalf("pending %d want 3 (filled excluded): %+v", len(pending), pending)
 	}
-	byID := map[string]map[string]any{}
+	byID := map[string]Tracker{}
 	for _, p := range pending {
-		byID[fmtSprint(p["clientOrderId"])] = p
+		byID[fmtSprint(p.ClientOrderID)] = p
 	}
-	if byID["done"] != nil {
+	if _, ok := byID["done"]; ok {
 		t.Fatal("filled tracker listed as pending")
 	}
-	if byID["many"]["attempts"] != 5 {
-		t.Fatalf("attempts %v", byID["many"]["attempts"])
+	if byID["many"].Attempts != 5 {
+		t.Fatalf("attempts %v", byID["many"].Attempts)
 	}
 
 	n, err := db.ExpireStaleTrackers("2024-06-04", 5)
@@ -56,14 +56,14 @@ func TestPendingTrackersListAndExpire(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pending) != 1 || fmtSprint(pending[0]["clientOrderId"]) != "today" {
+	if len(pending) != 1 || fmtSprint(pending[0].ClientOrderID) != "today" {
 		t.Fatalf("after expire %+v", pending)
 	}
 	row, err := db.FindPendingTracker("MSFT", "entry")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fmtSprint(row["clientOrderId"]) != "today" {
+	if fmtSprint(row.ClientOrderID) != "today" {
 		t.Fatal("today tracker should still be pending")
 	}
 	row, err = db.FindPendingTracker("AAPL", "entry")
@@ -77,9 +77,9 @@ func TestPendingTrackersListAndExpire(t *testing.T) {
 
 func TestExpireStaleTrackersByAttemptsOnly(t *testing.T) {
 	db := openTestDB(t)
-	if err := db.SaveOrderTracker(map[string]any{
-		"clientOrderId": "t1", "symbol": "AAPL", "action": "exit", "status": "submitted",
-		"dateKey": "2024-06-04",
+	if err := db.SaveOrderTracker(Tracker{
+		ClientOrderID: "t1", Symbol: "AAPL", Action: "exit", Status: "submitted",
+		DateKey: "2024-06-04",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestMigrateAddsTrackerAttempts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pending) != 1 || pending[0]["attempts"] != 0 {
+	if len(pending) != 1 || pending[0].Attempts != 0 {
 		t.Fatalf("legacy tracker %+v", pending)
 	}
 	n, err := db.ExpireStaleTrackers("2024-06-04", 64)

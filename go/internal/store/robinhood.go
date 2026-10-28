@@ -122,42 +122,27 @@ func (d *DB) TakeRobinhoodPending(state string) (verifier, redirect string, err 
 	return verifier, redirect, nil
 }
 
-func (d *DB) AnyPendingTrackerFor(broker string) (map[string]any, error) {
-	rows, err := d.listBlockingTrackers()
-	if err != nil {
-		return nil, err
-	}
-	if len(rows) == 0 {
-		return nil, nil
-	}
-	if broker == "" {
-		return rows[0], nil
-	}
-	for _, row := range rows {
-		if fmt.Sprint(row["broker"]) == broker {
-			return row, nil
-		}
-	}
-	return nil, nil
+func (d *DB) AnyPendingTrackerFor(broker string) (*Tracker, error) {
+	return d.FindPendingTrackerBroker("", "", broker)
 }
 
-func (d *DB) FindPendingTrackerBroker(symbol, action, broker string) (map[string]any, error) {
+func (d *DB) FindPendingTrackerBroker(symbol, action, broker string) (*Tracker, error) {
 	rows, err := d.listBlockingTrackers()
 	if err != nil {
 		return nil, err
 	}
 	want := SafeTicker(symbol)
-	for _, row := range rows {
-		if action != "" && fmt.Sprint(row["action"]) != action {
+	for i, row := range rows {
+		if action != "" && row.Action != action {
 			continue
 		}
-		if want != "" && SafeTicker(fmt.Sprint(row["symbol"])) != want {
+		if want != "" && SafeTicker(row.Symbol) != want {
 			continue
 		}
-		if broker != "" && fmt.Sprint(row["broker"]) != broker {
+		if broker != "" && row.Broker != broker {
 			continue
 		}
-		return row, nil
+		return &rows[i], nil
 	}
 	return nil, nil
 }

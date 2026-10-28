@@ -18,8 +18,8 @@ func TestExitFillReplayLeavesReentryAlone(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SaveOrderTracker(map[string]any{
-		"clientOrderId": "x-exit", "symbol": "AAPL", "action": "exit", "quantity": 4, "broker": "webull",
+	if err := db.SaveOrderTracker(store.Tracker{
+		ClientOrderID: "x-exit", Symbol: "AAPL", Action: "exit", Quantity: 4, Broker: "webull",
 	}); err != nil {
 		t.Fatal(err)
 	}

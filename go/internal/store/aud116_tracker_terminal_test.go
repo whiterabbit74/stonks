@@ -7,7 +7,7 @@ import "testing"
 // the finished order back in the polling queue and its fill was booked twice.
 func TestSaveOrderTrackerKeepsTerminalStatus(t *testing.T) {
 	db := openTestDB(t)
-	rec := map[string]any{"clientOrderId": "x1", "symbol": "AAPL", "action": "exit", "quantity": 10}
+	rec := Tracker{ClientOrderID: "x1", Symbol: "AAPL", Action: "exit", Quantity: 10}
 	if err := db.SaveOrderTracker(rec); err != nil {
 		t.Fatal(err)
 	}
@@ -17,7 +17,7 @@ func TestSaveOrderTrackerKeepsTerminalStatus(t *testing.T) {
 	if err := db.SaveOrderTracker(rec); err != nil { // late startTracking write
 		t.Fatal(err)
 	}
-	if got := db.GetOrderTracker("x1")["status"]; got != "filled" {
+	if got := db.GetOrderTracker("x1").Status; got != "filled" {
 		t.Fatalf("status = %v, want filled", got)
 	}
 	pending, err := db.ListPendingTrackers()
@@ -25,7 +25,7 @@ func TestSaveOrderTrackerKeepsTerminalStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range pending {
-		if p["clientOrderId"] == "x1" {
+		if p.ClientOrderID == "x1" {
 			t.Fatal("a filled order must not return to the polling queue")
 		}
 	}

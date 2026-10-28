@@ -538,9 +538,9 @@ func TestStaleTrackerExpires(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, _ := testEngine(t, bars)
 	e.Now = func() time.Time { return time.Date(2026, 9, 3, 20, 0, 0, 0, time.UTC) }
-	_ = db.SaveOrderTracker(map[string]any{
-		"clientOrderId": "old-1", "symbol": "AAPL", "action": "entry",
-		"status": "submitted", "dateKey": "2026-09-01",
+	_ = db.SaveOrderTracker(store.Tracker{
+		ClientOrderID: "old-1", Symbol: "AAPL", Action: "entry",
+		Status: "submitted", DateKey: "2026-09-01",
 	})
 	e.expireStaleTrackers()
 	row, err := db.FindPendingTracker("AAPL", "entry")
@@ -584,7 +584,7 @@ func TestInFlightPreventsDoubleRecord(t *testing.T) {
 	e.mu.Lock()
 	e.inFlight = map[string]bool{oid: true}
 	e.mu.Unlock()
-	if e.pollOneTracker(map[string]any{"clientOrderId": oid, "symbol": "AAPL", "action": "entry", "quantity": 1.0, "dateKey": "2026-09-01"}) {
+	if e.pollOneTracker(store.Tracker{ClientOrderID: oid, Symbol: "AAPL", Action: "entry", Quantity: 1.0, DateKey: "2026-09-01"}) {
 		t.Fatal("inFlight should skip")
 	}
 	// The monitoring's row is there since the signal; the fill is not yet.

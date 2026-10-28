@@ -76,10 +76,10 @@ func TestListingLagAfterRestartKeepsJournal(t *testing.T) {
 	br.ListingLag = true
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	_ = db.SavePosition(store.Position{ID: "oid-restart", Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01", EntryPrice: store.Ptr[float64](8.2), Quantity: 1.0, Webull: store.BrokerLeg{Qty: 1.0, EntryPrice: store.Ptr[float64](8.2)}})
-	if err := db.SaveOrderTracker(map[string]any{
-		"clientOrderId": "oid-restart", "symbol": "AAPL", "action": "entry",
-		"status": "submitted", "quantity": 1.0, "source": "t1", "dateKey": "2026-09-01",
-		"broker": "webull", "startedAt": e.now().UTC().Format(time.RFC3339Nano),
+	if err := db.SaveOrderTracker(store.Tracker{
+		ClientOrderID: "oid-restart", Symbol: "AAPL", Action: "entry",
+		Status: "submitted", Quantity: 1.0, Source: "t1", DateKey: "2026-09-01",
+		Broker: "webull", StartedAt: e.now().UTC().Format(time.RFC3339Nano),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -280,8 +280,8 @@ func TestResolveTrackerAbsentDeletesPhantomAndUnblocks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveTracker: %v", err)
 	}
-	if fmt.Sprint(tracker["status"]) != "terminal_absent" {
-		t.Fatalf("resolved tracker status = %v, want terminal_absent", tracker["status"])
+	if fmt.Sprint(tracker.Status) != "terminal_absent" {
+		t.Fatalf("resolved tracker status = %v, want terminal_absent", tracker.Status)
 	}
 	if row, _ := db.GetPosition(oid); row != nil {
 		t.Fatal("resolve(absent) must delete the phantom journal row")
@@ -355,17 +355,15 @@ func TestRobinhoodOrderDetailMissingIsUnavailable(t *testing.T) {
 	}
 }
 
-func trackerStatus(t *testing.T, db interface {
-	ListRecentTrackers(int) ([]map[string]any, error)
-}, id string) string {
+func trackerStatus(t *testing.T, db *store.DB, id string) string {
 	t.Helper()
 	rows, err := db.ListRecentTrackers(20)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, r := range rows {
-		if fmt.Sprint(r["clientOrderId"]) == id {
-			return fmt.Sprint(r["status"])
+		if r.ClientOrderID == id {
+			return r.Status
 		}
 	}
 	t.Fatalf("tracker %s not found", id)

@@ -15,8 +15,8 @@ func TestPartialExitCoveringTheRestFlattensTheLeg(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SaveOrderTracker(map[string]any{
-		"clientOrderId": "w1-exit", "symbol": "AAPL", "action": "exit", "quantity": 10,
+	if err := db.SaveOrderTracker(Tracker{
+		ClientOrderID: "w1-exit", Symbol: "AAPL", Action: "exit", Quantity: 10,
 	}); err != nil {
 		t.Fatal(err)
 	}

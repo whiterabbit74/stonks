@@ -540,11 +540,11 @@ func TestTestBuyCreatesTracker(t *testing.T) {
 	if row == nil {
 		t.Fatal("webull test buy must leave an order_trackers row")
 	}
-	if fmt.Sprint(row["source"]) != "test_buy" {
-		t.Fatalf("source=%v want test_buy", row["source"])
+	if fmt.Sprint(row.Source) != "test_buy" {
+		t.Fatalf("source=%v want test_buy", row.Source)
 	}
-	if legBroker(row) != "webull" {
-		t.Fatalf("broker=%v want webull", legBroker(row))
+	if row.Broker != "webull" {
+		t.Fatalf("broker=%v want webull", row.Broker)
 	}
 
 	rh := &MemoryBroker{}
@@ -560,11 +560,11 @@ func TestTestBuyCreatesTracker(t *testing.T) {
 	if row == nil {
 		t.Fatal("robinhood test buy must leave an order_trackers row")
 	}
-	if fmt.Sprint(row["source"]) != "test_buy" {
-		t.Fatalf("source=%v want test_buy", row["source"])
+	if fmt.Sprint(row.Source) != "test_buy" {
+		t.Fatalf("source=%v want test_buy", row.Source)
 	}
-	if legBroker(row) != "robinhood" {
-		t.Fatalf("broker=%v want robinhood", legBroker(row))
+	if row.Broker != "robinhood" {
+		t.Fatalf("broker=%v want robinhood", row.Broker)
 	}
 }
 
@@ -904,9 +904,9 @@ func TestCancelOpenOrdersBeforeEntry(t *testing.T) {
 	// last poll) whose order is still working at the broker. Only orders this
 	// engine placed may be cancelled, so "old-1" is registered as ours and the
 	// MSFT order - someone trading the account by hand - is not.
-	_ = db.SaveOrderTracker(map[string]any{
-		"clientOrderId": "old-1", "symbol": "AAPL", "action": "entry",
-		"status": "expired", "quantity": 1.0, "source": "test", "dateKey": "2026-09-01",
+	_ = db.SaveOrderTracker(store.Tracker{
+		ClientOrderID: "old-1", Symbol: "AAPL", Action: "entry",
+		Status: "expired", Quantity: 1.0, Source: "test", DateKey: "2026-09-01",
 	})
 	// The cycle's preflight holds an entry next to any working order in the
 	// ticker; this guard is what clears our own one at submission.

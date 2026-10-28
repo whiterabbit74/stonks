@@ -5,6 +5,8 @@ import (
 
 	"strings"
 	"testing"
+
+	"mktorder.com/go/internal/store"
 )
 
 // AUD-002: an exit fill whose local rows cannot be read used to be dropped in
@@ -20,9 +22,9 @@ func TestAUD002UnreadableJournalOnExitFillRaisesBlock(t *testing.T) {
 	if _, err := e.DB.SQL.Exec(`DROP TABLE positions`); err != nil {
 		t.Fatal(err)
 	}
-	e.recordFill(map[string]any{
-		"clientOrderId": id, "symbol": "AAPL", "action": "exit",
-		"quantity": 1.0, "dateKey": "2026-09-01", "broker": "webull",
+	e.recordFill(store.Tracker{
+		ClientOrderID: id, Symbol: "AAPL", Action: "exit",
+		Quantity: 1.0, DateKey: "2026-09-01", Broker: "webull",
 	}, map[string]any{"status": "filled", "filled_qty": 1.0, "avg_price": 10.0}, "filled")
 
 	if !e.trackerPersistBlocked("webull") {

@@ -38,14 +38,14 @@ func TestFailedNotificationIsLogged(t *testing.T) {
 }
 
 func TestTrackerNoticeText(t *testing.T) {
-	exit := map[string]any{"symbol": "MSFT", "action": "exit", "quantity": 1.0, "broker": "robinhood", "source": "telegram_t1"}
+	exit := store.Tracker{Symbol: "MSFT", Action: "exit", Quantity: 1.0, Broker: "robinhood", Source: "telegram_t1"}
 	if got := trackerNoticeText(exit, map[string]any{"avg_price": 535.12, "filled_qty": 1.0}, "filled"); got != "<b>Robinhood</b>: продано 1 MSFT по $535.12" {
 		t.Fatalf("T-1 exit fill: %q", got)
 	}
 	if got := trackerNoticeText(exit, nil, "filled"); got != "<b>Robinhood</b>: продано 1 MSFT — цена не подтверждена" {
 		t.Fatalf("fill without a price must not print $0: %q", got)
 	}
-	test := map[string]any{"symbol": "AAPL", "action": "entry", "quantity": 3.0, "broker": "webull", "source": "test_buy"}
+	test := store.Tracker{Symbol: "AAPL", Action: "entry", Quantity: 3.0, Broker: "webull", Source: "test_buy"}
 	if got := trackerNoticeText(test, nil, "rejected"); got != "<b>Webull</b>: заявка на покупку AAPL — отклонена\nисточник: test_buy" {
 		t.Fatalf("non-T-1 source must be named: %q", got)
 	}
@@ -67,8 +67,8 @@ func TestPositionCloseSendsResultAfterLastFill(t *testing.T) {
 		t.Fatal(err)
 	}
 	exit := func(id, broker string, qty, price float64) {
-		tr := map[string]any{"clientOrderId": id, "symbol": "MSFT", "action": "exit", "quantity": qty,
-			"source": "telegram_t1", "dateKey": "2026-10-09", "broker": broker, "status": "submitted"}
+		tr := store.Tracker{ClientOrderID: id, Symbol: "MSFT", Action: "exit", Quantity: qty,
+			Source: "telegram_t1", DateKey: "2026-10-09", Broker: broker, Status: "submitted"}
 		if err := e.DB.SaveOrderTracker(tr); err != nil {
 			t.Fatal(err)
 		}

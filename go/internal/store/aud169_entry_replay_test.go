@@ -4,9 +4,9 @@ import "testing"
 
 func saveEntryTracker(t *testing.T, db *DB, id string, qty float64) {
 	t.Helper()
-	if err := db.SaveOrderTracker(map[string]any{
-		"clientOrderId": id, "symbol": "AAPL", "action": "entry", "status": "submitted",
-		"quantity": qty, "source": "t1", "dateKey": "2026-09-01", "broker": "webull",
+	if err := db.SaveOrderTracker(Tracker{
+		ClientOrderID: id, Symbol: "AAPL", Action: "entry", Status: "submitted",
+		Quantity: qty, Source: "t1", DateKey: "2026-09-01", Broker: "webull",
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -15,7 +15,7 @@ import (
 // one — and asserts the journal never loses or swaps the broker and never
 // duplicates a row.
 
-func trackerFor(t *testing.T, e *Engine, id string) map[string]any {
+func trackerFor(t *testing.T, e *Engine, id string) *store.Tracker {
 	t.Helper()
 	row := e.DB.GetOrderTracker(id)
 	if row == nil {
@@ -62,10 +62,10 @@ func TestAUD003BrokerContourEndToEnd(t *testing.T) {
 	// (2) clientOrderId and broker are persisted on the tracker, per broker.
 	for _, tc := range []struct{ id, broker string }{{wID, "webull"}, {rID, "robinhood"}} {
 		row := trackerFor(t, e, tc.id)
-		if got := legBroker(row); got != tc.broker {
+		if got := row.Broker; got != tc.broker {
 			t.Fatalf("tracker %s broker=%q want %q", tc.id, got, tc.broker)
 		}
-		if got := fmt.Sprint(row["clientOrderId"]); got != tc.id {
+		if got := fmt.Sprint(row.ClientOrderID); got != tc.id {
 			t.Fatalf("tracker clientOrderId=%q want %q", got, tc.id)
 		}
 	}
@@ -74,7 +74,7 @@ func TestAUD003BrokerContourEndToEnd(t *testing.T) {
 	// stay pending — not finalize, not resend.
 	r.ListingLag = true
 	e.PollTrackers()
-	if st := fmt.Sprint(trackerFor(t, e, rID)["status"]); IsFinalOrderStatus(st) {
+	if st := fmt.Sprint(trackerFor(t, e, rID).Status); IsFinalOrderStatus(st) {
 		t.Fatalf("listing lag finalized the tracker: status=%s", st)
 	}
 	if len(r.Orders) != 1 {
@@ -86,14 +86,14 @@ func TestAUD003BrokerContourEndToEnd(t *testing.T) {
 	// no journal row invented.
 	w.SetDetail(wID, map[string]any{"status": "SOME_NEW_STATE", "client_order_id": wID})
 	e.PollTrackers()
-	if st := fmt.Sprint(trackerFor(t, e, wID)["status"]); IsFinalOrderStatus(st) {
+	if st := fmt.Sprint(trackerFor(t, e, wID).Status); IsFinalOrderStatus(st) {
 		t.Fatalf("unknown status finalized the tracker: status=%s", st)
 	}
 	if rows := brokerRows(t, e.DB, wID); len(rows) != 0 {
 		t.Fatalf("unknown status created a journal row: %+v", rows)
 	}
 
-	ordered := asFloat(trackerFor(t, e, wID)["quantity"])
+	ordered := asFloat(trackerFor(t, e, wID).Quantity)
 	if !(ordered > 1) {
 		t.Fatalf("ordered quantity too small to split: %v", ordered)
 	}
@@ -105,7 +105,7 @@ func TestAUD003BrokerContourEndToEnd(t *testing.T) {
 		"filled_qty": ordered - 1, "filled_price": 8.2,
 	})
 	e.PollTrackers()
-	if st := fmt.Sprint(trackerFor(t, e, wID)["status"]); IsFinalOrderStatus(st) {
+	if st := fmt.Sprint(trackerFor(t, e, wID).Status); IsFinalOrderStatus(st) {
 		t.Fatalf("partial fill finalized the tracker: status=%s", st)
 	}
 
@@ -115,7 +115,7 @@ func TestAUD003BrokerContourEndToEnd(t *testing.T) {
 		"filled_qty": ordered, "filled_price": 8.25,
 	})
 	e.PollTrackers()
-	if st := fmt.Sprint(trackerFor(t, e, wID)["status"]); st != "filled" {
+	if st := fmt.Sprint(trackerFor(t, e, wID).Status); st != "filled" {
 		t.Fatalf("full fill did not finalize: status=%s", st)
 	}
 
@@ -150,7 +150,7 @@ func TestAUD003BrokerContourEndToEnd(t *testing.T) {
 	})
 	e2.ResumeTrackers()
 	e2.StopTrackers()
-	if st := fmt.Sprint(trackerFor(t, e2, rID)["status"]); st != "filled" {
+	if st := fmt.Sprint(trackerFor(t, e2, rID).Status); st != "filled" {
 		t.Fatalf("restart did not resolve the pending tracker: status=%s", st)
 	}
 	// Обе заявки на один тикер: одна позиция, две ноги. Восстановленный после
@@ -228,9 +228,9 @@ func TestAUD004ManualAndAutoCloseConcurrent(t *testing.T) {
 			}
 			exits := 0
 			for _, p := range pending {
-				if fmt.Sprint(p["action"]) == "exit" {
+				if fmt.Sprint(p.Action) == "exit" {
 					exits++
-					if got := legBroker(p); got != name {
+					if got := p.Broker; got != name {
 						t.Fatalf("exit tracker broker=%q want %q", got, name)
 					}
 				}

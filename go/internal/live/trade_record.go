@@ -49,13 +49,13 @@ func (e *Engine) openPositionFor(symbol, preferID, broker string) (*store.Positi
 // recordFill journals one broker answer. It returns false when the journal
 // write failed, so the caller keeps the tracker pending and the next poll
 // retries instead of stamping a final status over a fill nobody recorded.
-func (e *Engine) recordFill(t map[string]any, detail map[string]any, status string) bool {
-	clientOrderID := fmt.Sprint(t["clientOrderId"])
-	symbol := store.SafeTicker(fmt.Sprint(t["symbol"]))
-	action := fmt.Sprint(t["action"])
-	source := fmt.Sprint(t["source"])
-	dateKey := fmt.Sprint(t["dateKey"])
-	if dateKey == "" || dateKey == "<nil>" {
+func (e *Engine) recordFill(t store.Tracker, detail map[string]any, status string) bool {
+	clientOrderID := t.ClientOrderID
+	symbol := store.SafeTicker(t.Symbol)
+	action := t.Action
+	source := t.Source
+	dateKey := t.DateKey
+	if dateKey == "" {
 		dateKey = tradingdate.TodayNYSE(e.now())
 	}
 
@@ -68,7 +68,7 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 	// reportedQty is what the broker says actually executed. Keep it separate
 	// from the fallbacks below: it is the only evidence of a partial fill.
 	reportedQty := fillQtyFrom(detail)
-	orderedQty := asFloat(t["quantity"])
+	orderedQty := t.Quantity
 	if !(orderedQty > 0) {
 		orderedQty = meta.Quantity
 	}
@@ -351,12 +351,12 @@ func (e *Engine) warnOnSlippage(symbol, action, clientOrderID string, meta order
 		brokerLabel(broker), devBps, symbol, action, meta.QuotePrice, fillPrice, bps))
 }
 
-func fillBrokerName(t map[string]any, meta orderMeta) string {
+func fillBrokerName(t store.Tracker, meta orderMeta) string {
 	name := strings.ToLower(strings.TrimSpace(meta.Broker))
-	if name == "" && t != nil {
-		name = strings.ToLower(strings.TrimSpace(fmt.Sprint(t["broker"])))
+	if name == "" {
+		name = strings.ToLower(strings.TrimSpace(t.Broker))
 	}
-	if name == "" || name == "<nil>" {
+	if name == "" {
 		return "webull"
 	}
 	return name
@@ -429,7 +429,7 @@ func (e *Engine) raiseTrackerPersistBlock(broker string) {
 // execution with it, so a row another broker executed against is kept and its
 // phantom leg cleared instead.
 func (e *Engine) deletePhantom(clientOrderID, symbol, broker string) {
-	if clientOrderID == "" || clientOrderID == "<nil>" {
+	if clientOrderID == "" {
 		return
 	}
 	// A failed read leaves the phantom row in place; openPositionFor has

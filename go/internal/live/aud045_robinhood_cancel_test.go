@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"mktorder.com/go/internal/types"
+
+	"mktorder.com/go/internal/store"
 )
 
 // AUD-045: Robinhood отдаёт заявки с полями ref_id и state. По
@@ -15,9 +17,9 @@ func TestOpenOrderCancelReadsRobinhoodFields(t *testing.T) {
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 
 	const stale = "own-stale-rh"
-	if err := db.SaveOrderTracker(map[string]any{
-		"clientOrderId": stale, "symbol": "AAPL", "action": "entry",
-		"status": "filled", "quantity": 1.0, "dateKey": "2026-09-01",
+	if err := db.SaveOrderTracker(store.Tracker{
+		ClientOrderID: stale, Symbol: "AAPL", Action: "entry",
+		Status: "filled", Quantity: 1.0, DateKey: "2026-09-01",
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -233,7 +233,7 @@ func TestSimulateConfirmationsDoesNotPlace(t *testing.T) {
 
 func TestAutoLogsIncludePending(t *testing.T) {
 	s, _, _ := liveServer(t)
-	_ = s.DB.SaveOrderTracker(map[string]any{"clientOrderId": "oid-1", "symbol": "AAPL", "action": "entry", "status": "submitted", "quantity": 1})
+	_ = s.DB.SaveOrderTracker(store.Tracker{ClientOrderID: "oid-1", Symbol: "AAPL", Action: "entry", Status: "submitted", Quantity: 1})
 	req := httptest.NewRequest("GET", "/api/autotrade/logs?limit=10", nil)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
@@ -271,10 +271,10 @@ func TestRobinhoodCloseGuardsPendingTracker(t *testing.T) {
 	s, _, webull := liveServer(t)
 	rh := &live.MemoryBroker{Pos: []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}}
 	s.Live.Brokers = map[string]live.Broker{"webull": webull, "robinhood": rh}
-	if err := s.DB.SaveOrderTracker(map[string]any{
-		"clientOrderId": "pend-rh-exit", "symbol": "AAPL", "action": "exit",
-		"status": "submitted", "quantity": 2, "dateKey": "2026-09-01",
-		"broker": "robinhood",
+	if err := s.DB.SaveOrderTracker(store.Tracker{
+		ClientOrderID: "pend-rh-exit", Symbol: "AAPL", Action: "exit",
+		Status: "submitted", Quantity: 2, DateKey: "2026-09-01",
+		Broker: "robinhood",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -317,11 +317,11 @@ func TestRobinhoodTestBuyCreatesTracker(t *testing.T) {
 	if row == nil {
 		t.Fatal("robinhood test buy must leave an order_trackers row")
 	}
-	if fmt.Sprint(row["source"]) != "test_buy" {
-		t.Fatalf("source=%v want test_buy", row["source"])
+	if fmt.Sprint(row.Source) != "test_buy" {
+		t.Fatalf("source=%v want test_buy", row.Source)
 	}
-	if legBroker(row) != "robinhood" {
-		t.Fatalf("broker=%v want robinhood", legBroker(row))
+	if row.Broker != "robinhood" {
+		t.Fatalf("broker=%v want robinhood", row.Broker)
 	}
 }
 

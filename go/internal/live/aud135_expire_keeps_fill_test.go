@@ -20,9 +20,9 @@ func TestExpiredPollKeepsLastKnownFill(t *testing.T) {
 	e.Telegram, e.ChatID, e.Now = &MemoryTelegram{}, "c", nearCloseNow()
 	br := &MemoryBroker{Name: "webull"}
 	e.Broker = br
-	tracker := map[string]any{
-		"clientOrderId": "x-buy", "symbol": "AAPL", "action": "entry", "status": "partially_filled",
-		"quantity": 10.0, "source": "telegram_t1", "dateKey": "2026-09-01", "broker": "webull",
+	tracker := store.Tracker{
+		ClientOrderID: "x-buy", Symbol: "AAPL", Action: "entry", Status: "partially_filled",
+		Quantity: 10.0, Source: "telegram_t1", DateKey: "2026-09-01", Broker: "webull",
 	}
 	if err := db.SaveOrderTracker(tracker); err != nil {
 		t.Fatal(err)
@@ -34,7 +34,7 @@ func TestExpiredPollKeepsLastKnownFill(t *testing.T) {
 	if done, err := e.pollTracker(tracker); !done || err != nil {
 		t.Fatalf("poll done=%v err=%v", done, err)
 	}
-	if got := fmt.Sprint(db.GetOrderTracker("x-buy")["status"]); got != "expired" {
+	if got := fmt.Sprint(db.GetOrderTracker("x-buy").Status); got != "expired" {
 		t.Fatalf("status %s", got)
 	}
 	p, err := db.OpenPositionBySymbol("AAPL")
@@ -56,9 +56,9 @@ func TestNetworkErrorAfterPartialFillKeepsShares(t *testing.T) {
 	e.Telegram, e.ChatID, e.Now = &MemoryTelegram{}, "c", nearCloseNow()
 	br := &MemoryBroker{Name: "webull"}
 	e.Broker = br
-	tracker := map[string]any{
-		"clientOrderId": "x-buy", "symbol": "AAPL", "action": "entry", "status": "submitted",
-		"quantity": 10.0, "source": "telegram_t1", "dateKey": "2026-09-01", "broker": "webull",
+	tracker := store.Tracker{
+		ClientOrderID: "x-buy", Symbol: "AAPL", Action: "entry", Status: "submitted",
+		Quantity: 10.0, Source: "telegram_t1", DateKey: "2026-09-01", Broker: "webull",
 	}
 	if err := db.SaveOrderTracker(tracker); err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ func TestNetworkErrorAfterPartialFillKeepsShares(t *testing.T) {
 	if done, _ := e.pollTracker(tracker); !done {
 		t.Fatal("poll 64 must end the tracker")
 	}
-	if got := fmt.Sprint(db.GetOrderTracker("x-buy")["status"]); got != "expired" {
+	if got := fmt.Sprint(db.GetOrderTracker("x-buy").Status); got != "expired" {
 		t.Fatalf("status %s", got)
 	}
 	p, err := db.OpenPositionBySymbol("AAPL")
@@ -95,15 +95,15 @@ func TestStaleDayExpiryKeepsPartialFill(t *testing.T) {
 	e.Telegram, e.ChatID, e.Now = &MemoryTelegram{}, "c", nearCloseNow()
 	br := &MemoryBroker{Name: "webull"}
 	e.Broker = br
-	if err := db.SaveOrderTracker(map[string]any{
-		"clientOrderId": "x-buy", "symbol": "AAPL", "action": "entry", "status": "partially_filled",
-		"quantity": 10.0, "source": "telegram_t1", "dateKey": "2026-08-31", "broker": "webull",
+	if err := db.SaveOrderTracker(store.Tracker{
+		ClientOrderID: "x-buy", Symbol: "AAPL", Action: "entry", Status: "partially_filled",
+		Quantity: 10.0, Source: "telegram_t1", DateKey: "2026-08-31", Broker: "webull",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	br.SetDetail("x-buy", map[string]any{"status": "PARTIAL_FILLED", "filled_qty": 4.0})
 	e.expireStaleTrackers()
-	if got := fmt.Sprint(db.GetOrderTracker("x-buy")["status"]); got != "expired" {
+	if got := fmt.Sprint(db.GetOrderTracker("x-buy").Status); got != "expired" {
 		t.Fatalf("status %s", got)
 	}
 	p, err := db.OpenPositionBySymbol("AAPL")

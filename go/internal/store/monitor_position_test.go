@@ -38,7 +38,7 @@ func TestMonitorPositionLivesBySignalAndLegsByFills(t *testing.T) {
 	if err != nil || row == nil || row.ID != "m1" {
 		t.Fatalf("the sell must find the row the signal closed today: %+v %v", row, err)
 	}
-	if err := db.SaveOrderTracker(map[string]any{"clientOrderId": "s1", "symbol": "AAPL", "action": "exit", "quantity": 3}); err != nil {
+	if err := db.SaveOrderTracker(Tracker{ClientOrderID: "s1", Symbol: "AAPL", Action: "exit", Quantity: 3}); err != nil {
 		t.Fatal(err)
 	}
 	after, booked, err := db.ExitLeg("m1", "webull", "s1", 3, PositionExit{Date: "2026-09-03", Price: 10.9})
@@ -74,7 +74,7 @@ func TestUnsoldLegIsFoundAfterItsExitDay(t *testing.T) {
 	if row, err := db.ExitRowFor("AAPL", "webull", "2026-09-10"); err != nil || row == nil || row.ID != "m1" {
 		t.Fatalf("a later sell belongs to the unsold leg: %+v %v", row, err)
 	}
-	if err := db.SaveOrderTracker(map[string]any{"clientOrderId": "s1", "symbol": "AAPL", "action": "exit", "quantity": 3}); err != nil {
+	if err := db.SaveOrderTracker(Tracker{ClientOrderID: "s1", Symbol: "AAPL", Action: "exit", Quantity: 3}); err != nil {
 		t.Fatal(err)
 	}
 	after, booked, err := db.ExitLeg("m1", "webull", "s1", 3, PositionExit{Date: "2026-09-10", Price: 9.5})
@@ -97,7 +97,7 @@ func TestMonitorPositionPartialSellShrinksTheLeg(t *testing.T) {
 	if _, err := db.ClosePosition("m1", PositionExit{Date: "2026-09-03", Price: 11}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SaveOrderTracker(map[string]any{"clientOrderId": "s1", "symbol": "AAPL", "action": "exit", "quantity": 5}); err != nil {
+	if err := db.SaveOrderTracker(Tracker{ClientOrderID: "s1", Symbol: "AAPL", Action: "exit", Quantity: 5}); err != nil {
 		t.Fatal(err)
 	}
 	for _, filled := range []float64{2, 2} { // the same answer twice: booked once

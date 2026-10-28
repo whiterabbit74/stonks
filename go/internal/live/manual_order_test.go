@@ -6,15 +6,17 @@ import (
 	"testing"
 
 	"mktorder.com/go/internal/types"
+
+	"mktorder.com/go/internal/store"
 )
 
 func TestManualOrderGuardsPendingThenTracks(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)
-	if err := db.SaveOrderTracker(map[string]any{
-		"clientOrderId": "pend-aapl-exit", "symbol": "AAPL", "action": "exit",
-		"status": "submitted", "quantity": 1, "dateKey": "2026-09-01",
-		"broker": "webull",
+	if err := db.SaveOrderTracker(store.Tracker{
+		ClientOrderID: "pend-aapl-exit", Symbol: "AAPL", Action: "exit",
+		Status: "submitted", Quantity: 1, DateKey: "2026-09-01",
+		Broker: "webull",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -45,10 +47,10 @@ func TestManualOrderGuardsPendingThenTracks(t *testing.T) {
 	if row == nil {
 		t.Fatal("order_trackers must have a row")
 	}
-	if fmt.Sprint(row["source"]) != "test_buy" {
-		t.Fatalf("source=%v want test_buy", row["source"])
+	if fmt.Sprint(row.Source) != "test_buy" {
+		t.Fatalf("source=%v want test_buy", row.Source)
 	}
-	if legBroker(row) != "webull" {
-		t.Fatalf("broker=%v want webull", legBroker(row))
+	if row.Broker != "webull" {
+		t.Fatalf("broker=%v want webull", row.Broker)
 	}
 }

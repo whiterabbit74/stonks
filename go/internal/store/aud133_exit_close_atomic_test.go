@@ -8,9 +8,9 @@ import "testing"
 func TestExitLegClosesFlatPositionAtomically(t *testing.T) {
 	db := openTestDB(t)
 	for _, id := range []string{"w-exit", "z-exit"} {
-		if err := db.SaveOrderTracker(map[string]any{
-			"clientOrderId": id, "symbol": "AAPL", "action": "exit", "status": "working",
-			"quantity": 4.0, "dateKey": "2026-09-02", "startedAt": "2026-09-02T19:59:00Z",
+		if err := db.SaveOrderTracker(Tracker{
+			ClientOrderID: id, Symbol: "AAPL", Action: "exit", Status: "working",
+			Quantity: 4.0, DateKey: "2026-09-02", StartedAt: "2026-09-02T19:59:00Z",
 		}); err != nil {
 			t.Fatal(err)
 		}
