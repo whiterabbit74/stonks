@@ -1,5 +1,37 @@
 # Реестр аудитов и находок
 
+## Архитектурный разбор 2026-10-28, ревизия 890b3b0, исправления до 99984c1
+
+Источник: read-only разбор архитектуры в сессии 2026-10-28 (без отдельного отчёта).
+Новые находки AUD-194–202. Исправления — агентами в worktree, проверены и слиты в `main`.
+Общая проверка на `99984c1`: `gofmt -l`, `go vet ./...` чистые; `go test ./...` зелёный
+в локальной зоне, `TZ=Pacific/Auckland`, `TZ=America/Los_Angeles`; `go test -race`
+для live/scheduler/store/httpapi зелёный. Не запушено, не задеплоено. Живой брокер и
+реальное закрытие сессии не прогонялись. Для выкладки: схема 8 → 10
+(`order_trackers.recorded_price`, затем `correlation_id`, `decision_ibs`, `quote_price`),
+прежний бинарь базу после миграции не откроет.
+
+| ID | Статус | Описание | Исправление / проверка |
+| --- | --- | --- | --- |
+| AUD-194 | VERIFIED, P1, fix `0490c17` | Окно T-11/T-1 шло в одном тике с опросом трекеров, здоровьем токенов и продлением календаря; зависший сетевой вызов съедал окно T-1. | `RunMarketTick` и `RunChores` раздельно, круг задач без наложения. `TestHungChoresDoNotBlockT1Window` FAIL→PASS. |
+| AUD-195 | VERIFIED, P2, fix `b1c0515` | Движок и брокеры собирались в HTTP-слое; `scheduler.engine()` молча создавал второй `Engine` со своими резервациями. | `live.NewProcess` в `cmd/server`; пустой `Deps.Live` — паника. Проверка — сборка и тесты. |
+| AUD-193 | VERIFIED, P2, fix `8e753e6` | (см. 2026-10-26) | Клиент Robinhood один на процесс, OAuth сбрасывает только MCP-сессию. `aud193_robinhood_attach_race_test.go` под `-race` FAIL→PASS. |
+| AUD-196 | VERIFIED, P2, fix `83fc69e`, `3a7e29b` | `legColumn` молча писал любого брокера в ногу Webull; ноги менялись из нескольких слоёв. | Неизвестный брокер — ошибка; ноги только через функции `store`. `TestUnknownBrokerFillIsRefused` FAIL→PASS. |
+| AUD-187 | VERIFIED, P1, fix `f062d8c` | (см. 2026-10-26) | Quantity — всё купленное строкой. `TestPeerBuyKeepsTheSoldLegQuantity` FAIL→PASS (2 → 3). |
+| AUD-180 | VERIFIED, P2, fix `6c4637f` | (см. 2026-10-26) | Цена прироста по приросту стоимости (`recorded_price`, схема 9). `TestCumulativeFillOfSecondOrderPricesOnlyItsIncrement` FAIL→PASS. |
+| AUD-188 | VERIFIED, P2, fix `de45763` | (см. 2026-10-26) | Дата выхода из трекера своей заявки. `TestDetachedLegKeepsItsOwnExitDate` FAIL→PASS. |
+| AUD-189 | VERIFIED, P2, fix `f380f52` | (см. 2026-10-26) | Правила в `store`, PATCH не меняет статус и ноги, POST — только новая строка. `TestManualPositionEditKeepsJournalRules` FAIL→PASS. |
+| AUD-197 | VERIFIED, P2, fix `301639c` | Торговые настройки читались из `map[string]any` с разбросанными приведениями; строка "true" включала автоторговлю в одних местах и не включала в других. | `live.TradingConfig`, флаги — только JSON `true`. `TestTradingConfigMistypedFlagsFailClosed`. Хранение блоба не менялось. |
+| AUD-198 | VERIFIED, P2, fix `bc8ac56` | `telegram_watches` хранил копию состояния позиции — второй источник истины. | Список наблюдения берёт позицию из `positions`; `UpdatePositions` удалён. `TestWatchesGETReadsOpenPositionFromJournal` FAIL→PASS. Колонки в старых базах не удалялись. |
+| AUD-199 | VERIFIED, P2, fix `d368d58`, `6676adb`, `e53b1ed` | Трекеры и ответы брокеров шли через `map[string]any` и проверки строки "<nil>". | `store.Tracker`, `BrokerOrder`, `BrokerPosition`. Существующие тесты; JSON для SPA прежний (NULL → ""/0). `Account()` остался map. |
+| AUD-200 | VERIFIED, P2, fix `f5a1dcb` | Метаданные заявки жили только в памяти; рестарт между заявкой и исполнением терял correlationId и IBS выхода. | Колонки трекера (схема 10). `order_meta_restart_test.go` FAIL→PASS. |
+| AUD-201 | VERIFIED, P3, fix `6815d51`, `99984c1` | Граница «мониторинг не видит брокеров» держалась на дисциплине; `decideMonitor` получал строку журнала с ногами. | Решение в `monitor_decision.go`, вход — тикер позиции. `TestMonitorDecisionIgnoresBrokerState`, `TestMonitorDecisionFileHasNoBrokerAccess`. |
+| AUD-202 | OPEN, P3 | T-11 выбирает кандидата своей `bestEntryRow` (telegram.go), а не `decideMonitor`: при равном IBS превью T-11 и решение T-1 могут назвать разные тикеры. | Не исправлено; найдено чтением кода на `99984c1`. |
+
+Мёртвая схема и код (без ID): `6925bb3` (`trades`/`broker_trades` не создаются в новых базах, без DROP), `5bd23b8`.
+Структура без изменения поведения: `9204c18` (app.js на 6 файлов), `84418d3` (server.go по доменам).
+Флейк `TestResolveTrackerAbsentDeletesPhantomAndUnblocks` — гонка теста с колесом трекера, `037212e`.
+
 ## Статический аудит 2026-10-26, ревизия 3a18c4b
 
 Источник: [CODE_AUDIT_2026-10-26.md](CODE_AUDIT_2026-10-26.md).
