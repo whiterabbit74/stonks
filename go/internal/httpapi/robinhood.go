@@ -55,10 +55,12 @@ func (s *Server) handleRobinhoodOAuthDisconnect(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) attachRobinhood() {
-	eng := s.liveEng()
-	eng.AttachBroker("robinhood", live.NewRobinhoodBroker(s.rh()))
-	if s.Providers != nil {
-		s.Providers.Robinhood = s.rh()
+	s.liveEng().AttachBroker("robinhood", live.NewRobinhoodBroker(s.rh()))
+	// The quote client lives for the process and reads tokens from the DB, so
+	// it is not replaced here (AUD-193); only its MCP session, opened under the
+	// previous token, is dropped.
+	if s.Providers != nil && s.Providers.Robinhood != nil {
+		s.Providers.Robinhood.MCP.Reset()
 	}
 }
 

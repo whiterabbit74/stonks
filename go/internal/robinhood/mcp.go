@@ -41,6 +41,13 @@ func (c *MCP) http() *http.Client {
 	return c.HTTP
 }
 
+// Reset drops the session so the next call initialises a new one.
+func (c *MCP) Reset() {
+	c.mu.Lock()
+	c.ready, c.session = false, ""
+	c.mu.Unlock()
+}
+
 func (c *MCP) endpoint() string {
 	if c.Endpoint != "" {
 		return c.Endpoint
