@@ -120,3 +120,29 @@ func TestAUD002UnreadableDatasetIsNotOverwrittenByPatch(t *testing.T) {
 		t.Fatalf("stored dataset was overwritten from a failed read: name=%q", name)
 	}
 }
+
+// AUD-002, the branch that still reads: a PUT that carries its own bars merges
+// over the stored metadata, so an unreadable row must stop it rather than be
+// overwritten with blanks.
+func TestAUD002PutWithDataRefusesUnreadableMetadata(t *testing.T) {
+	s := testServer(t, "")
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 9, Volume: 1}}
+	if err := s.DB.SaveDataset("AAPL", "Apple Inc", "Apple", "core", bars, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.SQL.Exec(`UPDATE dataset_meta SET name = NULL WHERE ticker = 'AAPL'`); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]any{"data": bars})
+	req := httptest.NewRequest("PUT", "/api/datasets/AAPL", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 500 {
+		t.Fatalf("PUT over unreadable metadata: %d %s", rec.Code, rec.Body.String())
+	}
+	var tag string
+	if err := s.DB.SQL.QueryRow(`SELECT tag FROM dataset_meta WHERE ticker='AAPL'`).Scan(&tag); err != nil || tag != "core" {
+		t.Fatalf("stored metadata overwritten: tag=%q err=%v", tag, err)
+	}
+}
