@@ -99,7 +99,7 @@ func TestTickSkipsComputedMLKEvenWithEmptyHolidayMap(t *testing.T) {
 	// 2026-01-19 20:00 UTC = 15:00 ET, MLK Monday
 	now := time.Date(2026, 1, 19, 20, 0, 0, 0, time.UTC)
 	var logs []JobLog
-	RunTick(db, Deps{}, now, func(j JobLog) { logs = append(logs, j) })
+	RunTick(db, Deps{Live: live.New(db, nil)}, now, func(j JobLog) { logs = append(logs, j) })
 	sawSkip := false
 	for _, j := range logs {
 		if j.Name == "market-jobs" && j.Skipped {
@@ -132,7 +132,7 @@ func TestTickSkipsHolidayMarketJobs(t *testing.T) {
 	// 2026-07-03 20:00 UTC = 16:00 ET on a Friday holiday
 	now := time.Date(2026, 7, 3, 20, 0, 0, 0, time.UTC)
 	var logs []JobLog
-	RunTick(db, Deps{}, now, func(j JobLog) { logs = append(logs, j) })
+	RunTick(db, Deps{Live: live.New(db, nil)}, now, func(j JobLog) { logs = append(logs, j) })
 	sawSkip := false
 	for _, j := range logs {
 		if j.Name == "market-jobs" && j.Skipped {
@@ -156,8 +156,8 @@ func TestTokenHealthDedupesPerETDay(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	now := time.Date(2026, 9, 1, 15, 0, 0, 0, time.UTC)
 	today := tradingdate.TodayNYSE(now)
-	d1, skip1 := RunTokenHealth(db, Deps{}, today, now)
-	d2, skip2 := RunTokenHealth(db, Deps{}, today, now)
+	d1, skip1 := RunTokenHealth(db, Deps{Live: live.New(db, nil)}, today, now)
+	d2, skip2 := RunTokenHealth(db, Deps{Live: live.New(db, nil)}, today, now)
 	if skip1 || d1 == "already-ran" {
 		t.Fatalf("first run should execute, got skip=%v %s", skip1, d1)
 	}
@@ -218,7 +218,7 @@ func TestTelegramAggregationUsesLocalIBS(t *testing.T) {
 	if err := db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75}); err != nil {
 		t.Fatal(err)
 	}
-	n := RunTelegramAggregation(db, Deps{}, 11)
+	n := RunTelegramAggregation(db, Deps{Live: live.New(db, nil)}, 11)
 	if n != 1 {
 		t.Fatalf("watches processed %d", n)
 	}
@@ -232,7 +232,7 @@ func TestTickDoesNotPanic(t *testing.T) {
 	}
 	t.Cleanup(func() { db.Close() })
 	var logs []JobLog
-	RunTick(db, Deps{}, time.Date(2026, 9, 1, 20, 0, 0, 0, time.UTC), func(j JobLog) { logs = append(logs, j) })
+	RunTick(db, Deps{Live: live.New(db, nil)}, time.Date(2026, 9, 1, 20, 0, 0, 0, time.UTC), func(j JobLog) { logs = append(logs, j) })
 	if len(logs) == 0 {
 		t.Fatal("expected at least token-health event")
 	}
@@ -947,7 +947,7 @@ func TestRunCalendarExtendReportsMarkerSaveFailure(t *testing.T) {
 	today := "2026-09-01"
 	now := time.Date(2026, 9, 1, 20, 0, 0, 0, time.UTC)
 	var logs []JobLog
-	RunCalendarExtend(db, Deps{}, today, now, func(j JobLog) { logs = append(logs, j) })
+	RunCalendarExtend(db, Deps{Live: live.New(db, nil)}, today, now, func(j JobLog) { logs = append(logs, j) })
 	for _, j := range logs {
 		if strings.Contains(j.Detail, "marker-save-failed") {
 			return

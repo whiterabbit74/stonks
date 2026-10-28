@@ -11,10 +11,9 @@ import (
 	"mktorder.com/go/internal/live"
 )
 
+// liveEng is the process's Engine, set by NewWithProviders. It never builds
+// one: a second Engine would not share the first one's reservations.
 func (s *Server) liveEng() *live.Engine {
-	if s.Live == nil {
-		s.Live = live.New(s.DB, s.Providers)
-	}
 	return s.Live
 }
 

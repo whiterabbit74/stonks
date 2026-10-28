@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"mktorder.com/go/internal/providers"
+	"mktorder.com/go/internal/robinhood"
 	"mktorder.com/go/internal/store"
 )
 
@@ -154,6 +155,33 @@ func (e *Engine) now() time.Time {
 		return e.Now()
 	}
 	return time.Now()
+}
+
+// NewProcess wires the process's one Engine: the quote source's Webull token
+// and Robinhood client, then Webull and (when connected) Robinhood brokers.
+// Call it once per process. A second Engine on the same DB keeps its own
+// in-memory reservations and in-flight orders, so it would not see the
+// first one's T-1 guard.
+func NewProcess(db *store.DB, p *providers.Client) *Engine {
+	if p != nil {
+		p.UseWebullToken(db.WebullAccessToken)
+		// One Service for the life of the process: it reads tokens from the
+		// DB on every call, so OAuth complete never has to replace it (AUD-193).
+		p.Robinhood = robinhood.New(db)
+	}
+	e := New(db, p)
+	if e.Broker != nil {
+		e.AttachBroker("webull", e.Broker)
+	}
+	// A failed read is not "Robinhood is not connected". Leaving the broker
+	// unattached hides its positions and open orders from every later T-1
+	// reconcile for the life of the process, and the entry would be placed as
+	// if nothing were held there. Attach it and let its own calls fail loudly.
+	rhRow, rhErr := db.GetRobinhoodOAuthErr()
+	if rhErr != nil || rhRow.AccessToken != "" {
+		e.AttachBroker("robinhood", NewRobinhoodBroker(robinhood.New(db)))
+	}
+	return e
 }
 
 func (e *Engine) chat() string {

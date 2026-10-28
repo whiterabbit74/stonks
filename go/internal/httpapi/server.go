@@ -28,7 +28,6 @@ import (
 	"mktorder.com/go/internal/ibs"
 	"mktorder.com/go/internal/live"
 	"mktorder.com/go/internal/providers"
-	"mktorder.com/go/internal/robinhood"
 	"mktorder.com/go/internal/scheduler"
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/tradingdate"
@@ -63,40 +62,31 @@ type Server struct {
 	sessionsRevoked atomic.Bool
 }
 
+// New wires its own providers and Engine. Only for tests and tools: a process
+// that also runs the scheduler builds one Engine and passes it to both.
 func New(db *store.DB, webDir string) *Server {
-	return NewWithProviders(db, webDir, providers.FromEnv())
+	p := providers.FromEnv()
+	return NewWithProviders(db, webDir, p, live.NewProcess(db, p))
 }
 
-func NewWithProviders(db *store.DB, webDir string, p *providers.Client) *Server {
+// NewWithProviders takes ready dependencies; eng is the process's one Engine
+// (live.NewProcess), shared with the scheduler.
+func NewWithProviders(db *store.DB, webDir string, p *providers.Client, eng *live.Engine) *Server {
+	if eng == nil {
+		panic("httpapi: nil live.Engine")
+	}
 	s := &Server{
 		DB:        db,
 		WebDir:    webDir,
 		BuildID:   os.Getenv("BUILD_ID"),
 		Providers: p,
+		Live:      eng,
 		prod:      envIsProd(),
 		adminUser: strings.ToLower(envDefault("ADMIN_USERNAME", "admin@example.com")),
 		adminPass: os.Getenv("ADMIN_PASSWORD"),
 		limiter:   newIPLimiter(),
 	}
-	if p != nil {
-		p.UseWebullToken(db.WebullAccessToken)
-	}
 	s.revokeSessionsOnCredentialChange()
-	s.Live = live.New(db, p)
-	if s.Live.Broker != nil {
-		s.Live.AttachBroker("webull", s.Live.Broker)
-	}
-	// A failed read is not "Robinhood is not connected". Leaving the broker
-	// unattached hides its positions and open orders from every later T-1
-	// reconcile for the life of the process, and the entry would be placed as
-	// if nothing were held there. Attach it and let its own calls fail loudly.
-	rhRow, rhErr := db.GetRobinhoodOAuthErr()
-	if rhErr != nil || rhRow.AccessToken != "" {
-		s.Live.AttachBroker("robinhood", live.NewRobinhoodBroker(robinhood.New(db)))
-	}
-	if p != nil {
-		p.Robinhood = robinhood.New(db)
-	}
 	s.mux = http.NewServeMux()
 	s.routes()
 	return s

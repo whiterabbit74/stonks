@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"mktorder.com/go/internal/httpapi"
+	"mktorder.com/go/internal/live"
 	"mktorder.com/go/internal/providers"
 	"mktorder.com/go/internal/scheduler"
 	"mktorder.com/go/internal/store"
@@ -43,9 +44,12 @@ func run() error {
 	}
 	defer db.Close()
 	webDir := filepath.Join(root, "web")
+	// One providers client and one Engine for the process, shared by HTTP and
+	// the scheduler.
 	p := providers.FromEnv()
-	srv := httpapi.NewWithProviders(db, webDir, p)
-	stop := scheduler.StartWith(db, scheduler.Deps{Providers: p, Live: srv.Live}, schedulerLog)
+	eng := live.NewProcess(db, p)
+	srv := httpapi.NewWithProviders(db, webDir, p, eng)
+	stop := scheduler.StartWith(db, scheduler.Deps{Providers: p, Live: eng}, schedulerLog)
 	stopOnce := sync.OnceFunc(stop)
 	defer stopOnce()
 

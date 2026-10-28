@@ -68,7 +68,7 @@ func TestRobinhoodHealthJobRefreshAndGetAccounts(t *testing.T) {
 	_ = db.SaveRobinhoodTokens("A1", "R1", "Bearer", "internal", time.Now().Add(48*time.Hour).Format(time.RFC3339))
 	now := time.Date(2026, 9, 1, 15, 0, 0, 0, time.UTC)
 	today := tradingdate.TodayNYSE(now)
-	hs := RunBrokerHealth(db, Deps{}, today, now)
+	hs := RunBrokerHealth(db, Deps{Live: live.New(db, nil)}, today, now)
 	if !refreshed {
 		t.Fatal("daily job must Refresh()")
 	}
@@ -108,7 +108,7 @@ func TestRobinhoodHealthJobNeedsReauthOn400(t *testing.T) {
 	_ = db.SaveRobinhoodTokens("A1", "R1", "Bearer", "internal", time.Now().Add(time.Hour).Format(time.RFC3339))
 	now := time.Date(2026, 9, 2, 15, 0, 0, 0, time.UTC)
 	today := tradingdate.TodayNYSE(now)
-	RunBrokerHealth(db, Deps{}, today, now)
+	RunBrokerHealth(db, Deps{Live: live.New(db, nil)}, today, now)
 	if db.GetRobinhoodOAuth().LastCheckStatus != live.HealthNeedsReauth {
 		t.Fatalf("got %s", db.GetRobinhoodOAuth().LastCheckStatus)
 	}
@@ -130,7 +130,7 @@ func TestRobinhoodHealthJobUnreachableKeepsOK(t *testing.T) {
 	_ = db.UpsertRobinhoodHealth("2026-08-01", live.HealthOK, "old")
 	now := time.Date(2026, 9, 3, 15, 0, 0, 0, time.UTC)
 	today := tradingdate.TodayNYSE(now)
-	RunBrokerHealth(db, Deps{}, today, now)
+	RunBrokerHealth(db, Deps{Live: live.New(db, nil)}, today, now)
 	if db.GetRobinhoodOAuth().LastCheckStatus != live.HealthOK {
 		t.Fatalf("UNREACHABLE must not overwrite OK, got %s", db.GetRobinhoodOAuth().LastCheckStatus)
 	}

@@ -131,14 +131,6 @@ type Deps struct {
 	Live      *live.Engine
 }
 
-// Start builds the one Engine the whole scheduler shares. A fresh Engine per
-// call would drop the in-memory order metadata and the tracker de-duplication
-// that in-flight orders depend on.
-func Start(db *store.DB, onEvent func(JobLog)) (stop func()) {
-	p := providers.FromEnv()
-	return StartWith(db, Deps{Providers: p, Live: live.New(db, p)}, onEvent)
-}
-
 func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
 	if onEvent == nil {
 		onEvent = func(JobLog) {}
@@ -386,11 +378,14 @@ func settingsInt(settings map[string]any, key string, def int) int {
 	return def
 }
 
+// engine is the process's one Engine (live.NewProcess), shared with HTTP. It
+// is never built here: a fresh Engine has its own in-memory reservations and
+// in-flight orders, so a second one would defeat the T-1 guard.
 func engine(db *store.DB, deps Deps) *live.Engine {
-	if deps.Live != nil {
-		return deps.Live
+	if deps.Live == nil {
+		panic("scheduler: Deps.Live is required")
 	}
-	return live.New(db, deps.Providers)
+	return deps.Live
 }
 
 // RunTokenHealth runs the daily health check for every broker and reports one

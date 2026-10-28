@@ -20,7 +20,7 @@ func TestPasswordRotationRevokesSessions(t *testing.T) {
 	cookie := w.Result().Cookies()[0]
 
 	t.Setenv("ADMIN_PASSWORD", "after-rotation")
-	restarted := NewWithProviders(s.DB, s.WebDir, nil)
+	restarted := NewWithProviders(s.DB, s.WebDir, nil, s.Live)
 	r = httptest.NewRequest("GET", "/api/settings", nil)
 	r.AddCookie(cookie)
 	w = httptest.NewRecorder()
@@ -38,7 +38,7 @@ func TestPasswordRotationRevokesSessions(t *testing.T) {
 		t.Fatalf("login после ротации %d", w.Code)
 	}
 	fresh := w.Result().Cookies()[0]
-	again := NewWithProviders(s.DB, s.WebDir, nil)
+	again := NewWithProviders(s.DB, s.WebDir, nil, s.Live)
 	r = httptest.NewRequest("GET", "/api/settings", nil)
 	r.AddCookie(fresh)
 	w = httptest.NewRecorder()
@@ -63,7 +63,7 @@ func TestFailedRevokeKeepsOldSessionsOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("ADMIN_PASSWORD", "after-rotation")
-	restarted := NewWithProviders(s.DB, s.WebDir, nil)
+	restarted := NewWithProviders(s.DB, s.WebDir, nil, s.Live)
 	get := func() int {
 		r := httptest.NewRequest("GET", "/api/settings", nil)
 		r.AddCookie(cookie)
