@@ -66,16 +66,6 @@ func finiteNumber(v any) (float64, bool) {
 	}
 }
 
-func clamp(v, lo, hi float64) float64 {
-	if v < lo {
-		return lo
-	}
-	if v > hi {
-		return hi
-	}
-	return v
-}
-
 func enumIn(v string, allowed ...string) bool {
 	for _, a := range allowed {
 		if v == a {
@@ -203,13 +193,6 @@ func cfgHas(cfg map[string]any, key string) bool {
 	}
 	v, ok := cfg[key]
 	return ok && v != nil
-}
-
-func cfgFloatOr(cfg map[string]any, key string, fallback float64) float64 {
-	if !cfgHas(cfg, key) {
-		return fallback
-	}
-	return asFloat(cfg[key])
 }
 
 func liveLowIBS(cfg map[string]any) float64 {

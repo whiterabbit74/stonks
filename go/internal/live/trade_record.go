@@ -405,30 +405,6 @@ func (e *Engine) reduceOpenQuantity(symbol, preferID, broker, dateKey string, fi
 	return true
 }
 
-func (e *Engine) execJournalSQL(corr, broker, op, query string, args ...any) error {
-	if e == nil || e.DB == nil || e.DB.SQL == nil {
-		err := fmt.Errorf("journal unavailable")
-		e.logJournalSQLError(corr, broker, op, err)
-		return err
-	}
-	_, err := e.DB.SQL.Exec(query, args...)
-	if err != nil {
-		e.logJournalSQLError(corr, broker, op, err)
-		return err
-	}
-	return nil
-}
-
-func (e *Engine) logJournalSQLError(corr, broker, op string, err error) {
-	if e == nil || err == nil {
-		return
-	}
-	e.logAuto("journal_update_failed", corr, map[string]any{
-		"op": op, "broker": broker, "error": err.Error(),
-	})
-	e.raiseTrackerPersistBlock(broker)
-}
-
 func (e *Engine) raiseTrackerPersistBlock(broker string) {
 	if e == nil {
 		return
@@ -485,13 +461,4 @@ func (e *Engine) deletePhantom(clientOrderID, symbol, broker string) {
 			"op": "clear_phantom_leg", "id": p.ID, "broker": broker, "error": err.Error(),
 		})
 	}
-}
-
-// normalizeBrokerName names the broker a fill belongs to, defaulting to Webull
-// the way fillBrokerName does.
-func normalizeBrokerName(b string) string {
-	if strings.EqualFold(strings.TrimSpace(b), "robinhood") {
-		return "robinhood"
-	}
-	return "webull"
 }

@@ -58,19 +58,3 @@ func mustInsertBrokerTrade(t *testing.T, e *Engine, id, symbol, broker, entryDat
 		t.Fatal(err)
 	}
 }
-
-// tradeIDs collects the ids of whatever position list a snapshot carries.
-func tradeIDs(v any) map[string]bool {
-	out := map[string]bool{}
-	switch rows := v.(type) {
-	case []store.Position:
-		for _, row := range rows {
-			out[row.ID] = true
-		}
-	case []map[string]any:
-		for _, row := range rows {
-			out[fmt.Sprint(row["id"])] = true
-		}
-	}
-	return out
-}

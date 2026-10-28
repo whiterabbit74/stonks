@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -27,7 +26,6 @@ const SchemaVersion = 8
 
 type DB struct {
 	SQL *sql.DB
-	mu  sync.Mutex
 }
 
 func Open(path string) (*DB, error) {
@@ -1446,12 +1444,6 @@ func nullF(v sql.NullFloat64) any {
 	return v.Float64
 }
 
-func nullI(v sql.NullInt64) any {
-	if !v.Valid {
-		return nil
-	}
-	return v.Int64
-}
 func nullS(v sql.NullString) any {
 	if !v.Valid {
 		return nil

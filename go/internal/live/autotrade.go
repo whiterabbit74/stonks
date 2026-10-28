@@ -1011,16 +1011,6 @@ func (e *Engine) t1BrokerReconcile(w execWindow) (busy map[string]map[string]boo
 	return busy, entryOnlyBlocked, reasons
 }
 
-// retryBrokerRead retries a read-only broker call with no T-1 deadline of its
-// own — used outside the close-of-session path (e.g. sizing's account/position
-// reads), where unlimited retries within submitAttempts is the existing,
-// unchanged behavior.
-func retryBrokerRead[T any](e *Engine, what string, fn func() (T, error)) (T, error) {
-	return retryBrokerReadWindow(e, backgroundWindow(), what, func(context.Context) (T, error) {
-		return fn()
-	})
-}
-
 // retryBrokerReadWindow retries a read-only broker call, bounded by w. These
 // reads run before any order is sent, so a repeat is free on its own — but
 // when w carries a T-1 deadline, a retry that would not fit in the remaining
@@ -1032,8 +1022,6 @@ func retryBrokerReadWindow[T any](e *Engine, w execWindow, what string, fn func(
 	var err error
 	var lastDur time.Duration
 	for attempt := 1; attempt <= submitAttempts; attempt++ {
-		// Reads stop before the placement reserve, not at the deadline: the
-		// order still has to go out after them (CORE-02).
 		// Reads stop before the placement reserve, not at the deadline: the
 		// order still has to go out after them (CORE-02).
 		if e.deadlineExceeded(w, lastDur) || e.readBudget(w) <= 0 {

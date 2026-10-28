@@ -114,7 +114,6 @@ type Engine struct {
 	heldNotices        [][2]string
 	quoteCache         map[string]quoteCacheEntry
 	trackerPersistFail map[string]bool
-	activeBroker       string
 	lastRunAt          string
 	lastResult         any
 }

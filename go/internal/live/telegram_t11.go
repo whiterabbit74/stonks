@@ -133,21 +133,6 @@ func (e *Engine) brokerHoldingsLine() string {
 	return "💼 У брокеров (справка): " + strings.Join(parts, "; ")
 }
 
-// snap holds map[string]any values: a nil map stored in an interface is not
-// == nil, so a plain nil check reported OPEN/OPEN on every warning, whatever
-// the books actually said. An unreadable journal carries no trade keys at all —
-// "FLAT" there would state a fact the read never produced.
-func tradeStateLabel(snap map[string]any, key string) string {
-	v, ok := snap[key]
-	if !ok {
-		return "?"
-	}
-	if len(mapOf(v)) > 0 {
-		return "OPEN"
-	}
-	return "FLAT"
-}
-
 func buildEmaInlineBlock(alerts []EmaEval) string {
 	if len(alerts) == 0 {
 		return ""

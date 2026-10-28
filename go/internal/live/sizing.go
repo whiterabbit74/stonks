@@ -236,13 +236,6 @@ func extractNetLiquidation(root map[string]any) float64 {
 	return firstPositive(cands...)
 }
 
-func extractEntryBaseCapital(root map[string]any) float64 {
-	if cash := extractCashBalance(root); cash > 0 {
-		return cash
-	}
-	return extractNetLiquidation(root)
-}
-
 func positionMarketValue(m map[string]any) float64 {
 	return firstPositive(m["market_value"], m["marketValue"], m["market_val"], m["marketValueUsd"], m["last_value"])
 }
