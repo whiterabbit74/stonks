@@ -296,17 +296,11 @@ func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	company := strPtr(ds.CompanyName)
-	tag := strPtr(ds.Tag)
+	// MergeOHLC keeps tag and companyName; writing back the ones read above
+	// would undo a metadata edit made during the provider fetch.
 	if err := s.DB.MergeOHLC(id, hist.Rows); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
-	}
-	if company != "" || tag != "" {
-		if err := s.DB.UpdateDatasetMetadata(id, &tag, &company); err != nil {
-			writeJSON(w, 500, map[string]any{"error": err.Error()})
-			return
-		}
 	}
 	updated, err := s.DB.GetDatasetMeta(id)
 	if err != nil {
