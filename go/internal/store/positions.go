@@ -435,7 +435,10 @@ func (d *DB) PatchPosition(id string, edit func(*Position) error) (*Position, er
 	if !reflect.DeepEqual(p.Webull, before.Webull) || !reflect.DeepEqual(p.Robinhood, before.Robinhood) {
 		return nil, ValidationError("Ноги брокеров меняет только исполнение")
 	}
-	if err := p.checkManual(); err != nil {
+	// Only what the edit breaks is refused: a row stored before a rule existed
+	// (closed with no exit date, say) can still be hidden or annotated, as long
+	// as the edit leaves it no worse.
+	if err := p.checkManual(); err != nil && err != before.checkManual() {
 		return nil, err
 	}
 	if err := manualMonitorFree(tx, &p, id); err != nil {

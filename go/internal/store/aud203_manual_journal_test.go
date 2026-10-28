@@ -47,6 +47,22 @@ func TestPatchOfMonitorPositionItself(t *testing.T) {
 	}
 }
 
+// AUD-204: a row stored before a rule existed could not be edited at all,
+// not even hidden; the edit is refused only for what it breaks.
+func TestPatchLegacyRowRefusesOnlyNewBreakage(t *testing.T) {
+	d := openTestDB(t)
+	if err := d.SavePosition(Position{ID: "old", Symbol: "AAA", Status: "closed", EntryDate: "2026-09-01", IsTest: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.PatchPosition("old", func(p *Position) error { p.IsHidden = true; return nil }); err != nil {
+		t.Fatalf("hiding a legacy row: %v", err)
+	}
+	var invalid ValidationError
+	if _, err := d.PatchPosition("old", func(p *Position) error { p.ExitDate = "2026-08-01"; return nil }); !errors.As(err, &invalid) {
+		t.Fatalf("an exit date before the entry is still refused: %v", err)
+	}
+}
+
 func countMonitorOpen(t *testing.T, d *DB) int {
 	t.Helper()
 	var n int
