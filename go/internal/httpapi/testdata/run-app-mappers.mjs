@@ -5,7 +5,9 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appPath = path.resolve(here, '../../../web/js/app.js');
 const fixturePath = path.join(here, 'webull-nested-dashboard.json');
-const src = fs.readFileSync(appPath, 'utf8');
+// The SPA is split into app*.js parts sharing one global scope.
+const jsDir = path.dirname(appPath);
+const src = fs.readdirSync(jsDir).filter((f) => /^app.*\.js$/.test(f)).map((f) => fs.readFileSync(path.join(jsDir, f), 'utf8')).join('\n');
 const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
 
 function extractFunction(name) {

@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -12,9 +11,9 @@ import (
 // ноль: обе настройки молча меняют торговое поведение и выглядят осознанными.
 // Браузер не даёт отправить форму с пустым required-полем.
 func TestAutotradeNumberInputsAreRequired(t *testing.T) {
-	app, err := os.ReadFile("../web/js/app.js")
+	app, err := readAppSrc("../web/js")
 	if err != nil {
-		app, err = os.ReadFile("../../web/js/app.js")
+		app, err = readAppSrc("../../web/js")
 	}
 	if err != nil {
 		t.Fatal(err)

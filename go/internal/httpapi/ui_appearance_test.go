@@ -44,6 +44,36 @@ func readWeb(t *testing.T, rel string) string {
 	return string(b)
 }
 
+// readAppSrc concatenates the SPA's app*.js parts in dir (the app is split
+// across several classic scripts that share one global scope).
+func readAppSrc(dir string) ([]byte, error) {
+	parts, err := filepath.Glob(filepath.Join(dir, "app*.js"))
+	if err == nil && len(parts) == 0 {
+		err = os.ErrNotExist
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []byte
+	for _, p := range parts {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, b...)
+	}
+	return out, nil
+}
+
+func readApp(t *testing.T) string {
+	t.Helper()
+	b, err := readAppSrc(filepath.Join("..", "..", "web", "js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 func jsFn(src, name string) string {
 	needle := "function " + name
 	start := strings.Index(src, needle)
@@ -63,7 +93,7 @@ func jsFn(src, name string) string {
 // exist in CSS, duplicate ids are gone, footer status follows serverStatus,
 // CTAs are indigo, and dark !important no longer overrides dark: utilities.
 func TestUXAppearanceContract(t *testing.T) {
-	app := readWeb(t, "js/app.js")
+	app := readApp(t)
 	extra := readWeb(t, "css/extra.css")
 	appCSS := readWeb(t, "css/app.css")
 	charts := readWeb(t, "js/charts.js")

@@ -632,9 +632,9 @@ func TestDashboardNestedWebullBalance(t *testing.T) {
 }
 
 func TestUIOracleBlocks(t *testing.T) {
-	app, err := os.ReadFile("../web/js/app.js")
+	app, err := readAppSrc("../web/js")
 	if err != nil {
-		app, err = os.ReadFile("../../web/js/app.js")
+		app, err = readAppSrc("../../web/js")
 	}
 	if err != nil {
 		t.Fatal(err)
@@ -889,9 +889,9 @@ func TestRobinhoodDashboardMatchesWebullContract(t *testing.T) {
 }
 
 func TestPagesDriveLiveAPIs(t *testing.T) {
-	app, err := os.ReadFile("../web/js/app.js")
+	app, err := readAppSrc("../web/js")
 	if err != nil {
-		app, err = os.ReadFile("../../web/js/app.js")
+		app, err = readAppSrc("../../web/js")
 	}
 	if err != nil {
 		t.Fatal(err)

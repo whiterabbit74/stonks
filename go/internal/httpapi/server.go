@@ -2129,6 +2129,9 @@ func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
 	s.serveIndex(w, r, filepath.Join(s.WebDir, "index.html"))
 }
 
+// Every SPA script under /js/ gets the build version, so a deploy busts all of them.
+var jsSrcRe = regexp.MustCompile(`src="/js/[^"?]+\.js"`)
+
 func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request, path string) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -2140,9 +2143,7 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request, path string)
 		v = "dev"
 	}
 	html := string(b)
-	html = strings.ReplaceAll(html, `src="/js/api.js"`, `src="/js/api.js?v=`+v+`"`)
-	html = strings.ReplaceAll(html, `src="/js/charts.js"`, `src="/js/charts.js?v=`+v+`"`)
-	html = strings.ReplaceAll(html, `src="/js/app.js"`, `src="/js/app.js?v=`+v+`"`)
+	html = jsSrcRe.ReplaceAllStringFunc(html, func(m string) string { return strings.TrimSuffix(m, `"`) + `?v=` + v + `"` })
 	html = strings.ReplaceAll(html, `href="/css/app.css"`, `href="/css/app.css?v=`+v+`"`)
 	html = strings.ReplaceAll(html, `href="/css/extra.css"`, `href="/css/extra.css?v=`+v+`"`)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

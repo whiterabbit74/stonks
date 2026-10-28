@@ -69,7 +69,7 @@ func TestVanillaUIAssets(t *testing.T) {
 	if !strings.Contains(cj, "adj_close") || !strings.Contains(cj, "ema200") {
 		t.Fatal("chart CSV must export price/ibs/ema columns like the old TradingChart")
 	}
-	app, _ := os.ReadFile(filepath.Join(web, "js/app.js"))
+	app, _ := readAppSrc(filepath.Join(web, "js"))
 	a := string(app)
 
 	for _, route := range []string{"/login", "/data", "/enhance", "/stocks", "/ema", "/multi-ticker-options", "/calendar", "/split", "/watches", "/broker", "/webull", "/robinhood", "/settings", "/results"} {
@@ -266,7 +266,7 @@ func TestStaticCacheHeaders(t *testing.T) {
 // TestBrokerHeaderLabeledStatuses is C-1/C-2/C-3: three labeled Russian
 // badges for this page's broker, one health dictionary, no raw OK/LIVE.
 func TestBrokerHeaderLabeledStatuses(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	if strings.Contains(a, `id="broker-token"`) {
 		t.Fatal("#broker-token must be removed")
 	}
@@ -315,7 +315,7 @@ func TestBrokerHeaderLabeledStatuses(t *testing.T) {
 
 // TestBrokerJournalTrackedAndLogsArePerKind is A-4/A-5/A-6.
 func TestBrokerJournalTrackedAndLogsArePerKind(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	page := jsFn(a, "pageBroker")
 	// One row per position with a column block per broker, instead of a
 	// «Брокер» column on a per-broker journal.
@@ -366,7 +366,7 @@ func TestBrokerJournalTrackedAndLogsArePerKind(t *testing.T) {
 // TestBrokerPagesIsolateLoadTabAndDashboard is A-1/A-2/A-3: /webull and
 // /robinhood must not share one load flag, one tab, or one untagged dashboard.
 func TestBrokerPagesIsolateLoadTabAndDashboard(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	if strings.Contains(a, "state.loaded.broker = true") {
 		t.Fatal("loaded.broker must be the broker kind, not a shared true")
 	}
@@ -406,7 +406,7 @@ func TestBrokerPagesIsolateLoadTabAndDashboard(t *testing.T) {
 // so the handler has to branch on the same `kind` the tab render used rather
 // than unconditionally calling the Webull close endpoint.
 func TestBrokerCloseHandlerDispatchesByKind(t *testing.T) {
-	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	app, err := readAppSrc(filepath.Join("..", "..", "web", "js"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -432,7 +432,7 @@ func TestBrokerCloseHandlerDispatchesByKind(t *testing.T) {
 // the autotrade tile must go through one helper that matches live.brokerFlags
 // (flat-key fallback only for webull; a missing robinhood key is false).
 func TestAutotradeEntriesExitsReadsEngineTruth(t *testing.T) {
-	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	app, err := readAppSrc(filepath.Join("..", "..", "web", "js"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,7 +476,7 @@ func TestAutotradeEntriesExitsReadsEngineTruth(t *testing.T) {
 // on the shared autotrade tab used to always call the Webull endpoint
 // (API.testBuy), including on the Robinhood page.
 func TestAutotradeTestBuyDispatchesByKind(t *testing.T) {
-	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	app, err := readAppSrc(filepath.Join("..", "..", "web", "js"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -502,7 +502,7 @@ func TestAutotradeTestBuyDispatchesByKind(t *testing.T) {
 // to render the Webull token panel and the Webull-only "BUY AAL" test button
 // unconditionally, even on /robinhood. It must branch by `kind`.
 func TestAutotradeTabSplitsSharedAndBrokerParts(t *testing.T) {
-	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	app, err := readAppSrc(filepath.Join("..", "..", "web", "js"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,7 +531,7 @@ func TestAutotradeTabSplitsSharedAndBrokerParts(t *testing.T) {
 // post-hoc notification once P1-6 made it floor the entry sizing reserve, and
 // the roadmap requires the text to follow that change.
 func TestMutationToastsFollowSuccessfulResponse(t *testing.T) {
-	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	app, err := readAppSrc(filepath.Join("..", "..", "web", "js"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -566,7 +566,7 @@ func TestMutationToastsFollowSuccessfulResponse(t *testing.T) {
 }
 
 func TestSetFormSendsOnlyKnownSettingsAndNestedBrokerFlags(t *testing.T) {
-	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	app, err := readAppSrc(filepath.Join("..", "..", "web", "js"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,7 +602,7 @@ func TestSetFormSendsOnlyKnownSettingsAndNestedBrokerFlags(t *testing.T) {
 }
 
 func TestAutotradeCardDisclaimsExecutionWindowAndSlippage(t *testing.T) {
-	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	app, err := readAppSrc(filepath.Join("..", "..", "web", "js"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -634,7 +634,7 @@ func TestAutotradeCardDisclaimsExecutionWindowAndSlippage(t *testing.T) {
 // overlay dialogs expose role=dialog, and Calendar/Watches show the
 // not-imported NYSE fallback copy.
 func TestPhase3UIAudit(t *testing.T) {
-	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	app, err := readAppSrc(filepath.Join("..", "..", "web", "js"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -688,7 +688,7 @@ func TestPhase3UIAudit(t *testing.T) {
 // still post defaultStrategy.riskManagement.commission {percentage: 0}; the
 // settings form must not grow those field names again.
 func TestSettingsFormOmitsCommissionFields(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	page := jsFn(a, "pageSettings")
 	if page == "" {
 		t.Fatal("pageSettings not found")
@@ -716,7 +716,7 @@ func TestSettingsFormOmitsCommissionFields(t *testing.T) {
 // state.autoConfig via liveLowIBS/liveHighIBS, with DEFAULT_* only as the last
 // fallback. Backtest bac / defaultStrategy.parameters stay their own 0.1/0.75.
 func TestLiveIBSThresholdHelpers(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	if !strings.Contains(a, "const DEFAULT_LOW_IBS = 0.1") || !strings.Contains(a, "const DEFAULT_HIGH_IBS = 0.75") {
 		t.Fatal("missing DEFAULT_LOW_IBS / DEFAULT_HIGH_IBS next to CAPITAL_MODES")
 	}
@@ -768,7 +768,7 @@ func TestLiveIBSThresholdHelpers(t *testing.T) {
 // and broker monitor must print < / >, not ≤ / ≥. EMA zone labels stay
 // «Покупка ≤ %» / «Продажа ≥ %».
 func TestWatchAndBrokerIBSUseStrictInequalityGlyphs(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	watches := jsFn(a, "pageWatches")
 	if watches == "" {
 		t.Fatal("pageWatches not found")
@@ -820,7 +820,7 @@ func TestWatchAndBrokerIBSUseStrictInequalityGlyphs(t *testing.T) {
 // follow the row's w.lowIBS / w.highIBS (strict < / >), falling back to
 // liveLowIBS/liveHighIBS, not the literals 0.10 / 0.75.
 func TestBrokerMonitorIBSColorUsesRowThresholds(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	broker := jsFn(a, "pageBroker")
 	monStart := strings.Index(broker, "tab === 'monitor'")
 	if monStart < 0 {
@@ -842,7 +842,7 @@ func TestBrokerMonitorIBSColorUsesRowThresholds(t *testing.T) {
 // button but the key lives in POLYGON_API_KEY / stored settings, not an
 // input on the API tab. The SPA must surface polygonApiKeyConfigured.
 func TestSettingsAPITabShowsPolygonKeyStatus(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	page := jsFn(a, "pageSettings")
 	if page == "" {
 		t.Fatal("pageSettings not found")
@@ -866,7 +866,7 @@ func TestSettingsAPITabShowsPolygonKeyStatus(t *testing.T) {
 // showcase decision when that map entry is missing. Reasons go through the
 // single SPA dictionary (decisionReasonText).
 func TestAutotradeDecisionReadsBrokerDecisions(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	if !strings.Contains(a, "brokerDecisions") {
 		t.Fatal("app.js must read lastResult.brokerDecisions")
 	}
@@ -901,7 +901,7 @@ func TestAutotradeDecisionReadsBrokerDecisions(t *testing.T) {
 // defaultStrategy, and calc metrics used to hardcode 10000 while pretending
 // to read state.settings.initialCapital. One helper plus the settings field.
 func TestInitialCapitalSettingIsTheSingleDefault(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	if !strings.Contains(a, "const DEFAULT_INITIAL_CAPITAL = 10000") {
 		t.Fatal("missing DEFAULT_INITIAL_CAPITAL")
 	}
@@ -929,7 +929,7 @@ func TestInitialCapitalSettingIsTheSingleDefault(t *testing.T) {
 // hardcoded 0.1/0.75, and /watches must expose a «Пороги» control that PATCHes
 // only lowIBS/highIBS.
 func TestWatchThresholdsAreEditable(t *testing.T) {
-	app := readWeb(t, "js/app.js")
+	app := readApp(t)
 	api := readWeb(t, "js/api.js")
 	addWatch := strings.Index(app, "API.addWatch(")
 	if addWatch < 0 {
@@ -965,7 +965,7 @@ func TestWatchThresholdsAreEditable(t *testing.T) {
 // option selected after re-render and immediately run the same calc as the
 // form submit. The empty «Выбрать пресет» row is a no-op.
 func TestEmaPresetChangeRunsBacktest(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	form := jsFn(a, "emaFormHTML")
 	if form == "" {
 		t.Fatal("emaFormHTML not found")
@@ -1002,7 +1002,7 @@ func TestEmaPresetChangeRunsBacktest(t *testing.T) {
 // restore control is gone. Stocks keeps ticker lists as named presets, same
 // as EMA — select, save, delete, and picking one runs the backtest.
 func TestStocksPageHasPresetsNotDefaultHint(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	params := jsFn(a, "stocksParams")
 	if params == "" {
 		t.Fatal("stocksParams not found")
@@ -1046,7 +1046,7 @@ func TestStocksPageHasPresetsNotDefaultHint(t *testing.T) {
 // TestWatchesSimulateButtonIsT1 is F-30: confirmations is T-1 (1 minute),
 // not T-2. The watches control and toasts must match that stage.
 func TestWatchesSimulateButtonIsT1(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	watches := jsFn(a, "pageWatches")
 	if watches == "" {
 		t.Fatal("pageWatches not found")
@@ -1079,7 +1079,7 @@ func TestWatchesSimulateButtonIsT1(t *testing.T) {
 }
 
 func TestWatchPricesReadsActualizeResultFields(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	after := jsFn(a, "afterRender")
 	start := strings.Index(after, "getElementById('watch-prices')")
 	if start < 0 {
@@ -1098,7 +1098,7 @@ func TestWatchPricesReadsActualizeResultFields(t *testing.T) {
 }
 
 func TestDatasetExportRevokesObjectURL(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	start := strings.Index(a, "querySelectorAll('[data-export]')")
 	if start < 0 {
 		t.Fatal("dataset export handler not found")
@@ -1113,7 +1113,7 @@ func TestDatasetExportRevokesObjectURL(t *testing.T) {
 }
 
 func TestToastIsPoliteStatus(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	start := strings.Index(a, "function toast(")
 	if start < 0 {
 		t.Fatal("toast not found")
@@ -1146,7 +1146,7 @@ func TestAPIFetchUsesAbortController(t *testing.T) {
 }
 
 func TestLongActionsDisableTheirButtons(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	if !strings.Contains(a, "function withBusy(") {
 		t.Fatal("need withBusy so double-clicks cannot start a second long action")
 	}
@@ -1201,7 +1201,7 @@ func TestLongActionsDisableTheirButtons(t *testing.T) {
 }
 
 func TestBuyHoldPaintRemovesOnlyChartBh(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	paint := strings.Index(a, "Charts.destroyIn(host)")
 	if paint < 0 {
 		t.Fatal("buy-hold paint must call Charts.destroyIn(host)")
@@ -1220,7 +1220,7 @@ func TestBuyHoldPaintRemovesOnlyChartBh(t *testing.T) {
 }
 
 func TestKeepChartsSkipsPageRootInnerHTML(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	start := strings.Index(a, "async function renderPage")
 	if start < 0 {
 		t.Fatal("renderPage not found")
@@ -1235,7 +1235,7 @@ func TestKeepChartsSkipsPageRootInnerHTML(t *testing.T) {
 }
 
 func TestLoadQuoteIgnoresStaleSequence(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	start := strings.Index(a, "async function loadQuote")
 	if start < 0 {
 		t.Fatal("loadQuote not found")
@@ -1250,7 +1250,7 @@ func TestLoadQuoteIgnoresStaleSequence(t *testing.T) {
 }
 
 func TestTickerMenuDoesNotDestroyCharts(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	start := strings.Index(a, "querySelectorAll('[data-menu]')")
 	if start < 0 {
 		t.Fatal("ticker menu handler not found")
@@ -1278,7 +1278,7 @@ func TestTickerMenuDoesNotDestroyCharts(t *testing.T) {
 }
 
 func TestStatusPingUpdatesChromeNotFullPage(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	after := jsFn(a, "afterRender")
 	start := strings.Index(after, "API.status()")
 	if start < 0 {
@@ -1297,7 +1297,7 @@ func TestStatusPingUpdatesChromeNotFullPage(t *testing.T) {
 }
 
 func TestRenderPageIgnoresStaleGeneration(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	if !strings.Contains(a, "pageGen") {
 		t.Fatal("renderPage must drop stale generations")
 	}
@@ -1308,7 +1308,7 @@ func TestRenderPageIgnoresStaleGeneration(t *testing.T) {
 }
 
 func TestUpdateChromeSkipsNullBadge(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	fn := jsFn(a, "updateChrome")
 	if strings.Contains(fn, "replaceWith(wrap.firstElementChild)") {
 		t.Fatal("replaceWith(null) inserts the text null; guard firstElementChild")
@@ -1322,7 +1322,7 @@ func TestUpdateChromeSkipsNullBadge(t *testing.T) {
 // backtest and asks for a new one. A plain navigation without the query keeps
 // whatever the user had typed instead of blanking it.
 func TestURLTickersDriveStocksPage(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	if !strings.Contains(jsFn(a, "navigate"), "applyURLTickers()") {
 		t.Fatal("navigate must apply ?tickers= from the URL")
 	}
@@ -1349,7 +1349,7 @@ func TestURLTickersDriveStocksPage(t *testing.T) {
 // Провал чтения позиций (Webull отвечает 429 на пачку запросов панели) раньше
 // выглядел на странице как «открытых позиций нет».
 func TestPositionsReadErrorIsShown(t *testing.T) {
-	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js/app.js"))
+	app, err := readAppSrc(filepath.Join("..", "..", "web", "js"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1364,7 +1364,7 @@ func TestPositionsReadErrorIsShown(t *testing.T) {
 // AUD-176: a corrupted preset list in localStorage threw while the shared
 // state was built and took the whole SPA down, the login page included.
 func TestStoredPresetListsAreParsedSafely(t *testing.T) {
-	a := readWeb(t, "js/app.js")
+	a := readApp(t)
 	for _, key := range []string{"emaPresets", "stockPresets", "optPresets"} {
 		if strings.Contains(a, "JSON.parse(localStorage.getItem('"+key+"')") {
 			t.Fatalf("%s is parsed without a guard", key)

@@ -8,7 +8,7 @@ const vm = require('node:vm');
 
 function extractErrText(src) {
   const start = src.indexOf('function errText(err)');
-  if (start < 0) throw new Error('function errText(err) not found in app.js');
+  if (start < 0) throw new Error('function errText(err) not found in app-core.js');
   const brace = src.indexOf('{', start);
   if (brace < 0) throw new Error('errText body not found');
   let depth = 0;
@@ -23,7 +23,7 @@ function extractErrText(src) {
   throw new Error('unclosed errText function');
 }
 
-const src = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+const src = fs.readFileSync(path.join(__dirname, 'app-core.js'), 'utf8');
 const fnSrc = extractErrText(src);
 const errText = vm.runInNewContext(fnSrc + '\nerrText;');
 if (typeof errText !== 'function') {
