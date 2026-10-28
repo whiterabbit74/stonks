@@ -1,6 +1,87 @@
 package store
 
-import "testing"
+import (
+	"database/sql"
+	"path/filepath"
+	"testing"
+)
+
+// legacyJournalDDL is the pre-`positions` journal pair as the old schema
+// created it. Fresh databases no longer get these tables; old ones keep them.
+const legacyJournalDDL = `
+CREATE TABLE trades (
+    id TEXT PRIMARY KEY, symbol TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open',
+    entry_date TEXT, exit_date TEXT, entry_price REAL, exit_price REAL,
+    entry_ibs REAL, exit_ibs REAL, entry_decision_time TEXT, exit_decision_time TEXT,
+    pnl_percent REAL, pnl_absolute REAL, holding_days INTEGER, notes TEXT,
+    linked_broker_trade_id TEXT, source TEXT DEFAULT 'auto',
+    is_hidden INTEGER NOT NULL DEFAULT 0, is_test INTEGER NOT NULL DEFAULT 0,
+    broker_order_id TEXT, client_order_id TEXT, filled_qty REAL, quantity REAL
+);
+CREATE TABLE broker_trades (
+    id TEXT PRIMARY KEY, symbol TEXT NOT NULL, broker TEXT NOT NULL DEFAULT 'webull',
+    status TEXT NOT NULL DEFAULT 'open',
+    entry_date TEXT, exit_date TEXT, entry_price REAL, exit_price REAL,
+    entry_ibs REAL, exit_ibs REAL, entry_decision_time TEXT, exit_decision_time TEXT,
+    pnl_percent REAL, pnl_absolute REAL, holding_days INTEGER, notes TEXT,
+    source TEXT DEFAULT 'auto',
+    is_hidden INTEGER NOT NULL DEFAULT 0, is_test INTEGER NOT NULL DEFAULT 0,
+    broker_order_id TEXT, client_order_id TEXT, filled_qty REAL, quantity REAL
+);`
+
+func createLegacyJournals(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if _, err := db.Exec(legacyJournalDDL); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOpenFreshHasNoLegacyJournals(t *testing.T) {
+	db := openTestDB(t)
+	for _, table := range []string{"trades", "broker_trades"} {
+		if hasTable(db.SQL, table) {
+			t.Fatalf("fresh database must not create legacy table %s", table)
+		}
+	}
+}
+
+// An old database still carries the legacy pair with rows: Open must fold them
+// into `positions` and leave the old tables in place.
+func TestOpenMigratesOldLegacyJournals(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v5.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	createLegacyJournals(t, db.SQL)
+	if _, err := db.SQL.Exec(`INSERT INTO trades (id, symbol, status, entry_date, quantity, entry_price) VALUES ('m-b-1','V','closed','2026-09-01',2,100)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.Exec(`INSERT INTO broker_trades (id, symbol, status, entry_date, quantity, entry_price) VALUES ('b-1','V','closed','2026-09-01',2,101)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.Exec(`UPDATE schema_meta SET version=5 WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	db, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	all, err := db.ListPositions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 || all[0].ID != "m-b-1" || !all[0].Webull.Executed() {
+		t.Fatalf("legacy rows not merged into one position: %+v", all)
+	}
+	var n int
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM trades`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("legacy table must stay untouched: n=%d err=%v", n, err)
+	}
+}
 
 func pf(v float64) *float64 { return &v }
 
@@ -81,6 +162,7 @@ func TestOpenPositionBySymbol(t *testing.T) {
 // and an execution with no journal row.
 func TestMergeLegacyJournals(t *testing.T) {
 	db := openTestDB(t)
+	createLegacyJournals(t, db.SQL)
 	legacy := [][]any{
 		// linked by linked_broker_trade_id
 		{"trades", "j-linked", "V", "closed", "2026-09-01", "b-1"},
@@ -148,6 +230,7 @@ func TestMergeLegacyJournals(t *testing.T) {
 // over already-merged data must not duplicate rows.
 func TestMergeLegacyJournalsRunsOnce(t *testing.T) {
 	db := openTestDB(t)
+	createLegacyJournals(t, db.SQL)
 	if _, err := db.SQL.Exec(`INSERT INTO trades (id, symbol, status, entry_date, quantity) VALUES ('j','V','open','2026-09-01',1)`); err != nil {
 		t.Fatal(err)
 	}

@@ -124,33 +124,6 @@ func (d *DB) initSchema() error {
             PRIMARY KEY (ticker, date)
         );
         CREATE INDEX IF NOT EXISTS idx_splits_ticker ON splits(ticker);
-        CREATE TABLE IF NOT EXISTS trades (
-            id                  TEXT PRIMARY KEY,
-            symbol              TEXT NOT NULL,
-            status              TEXT NOT NULL DEFAULT 'open',
-            entry_date          TEXT,
-            exit_date           TEXT,
-            entry_price         REAL,
-            exit_price          REAL,
-            entry_ibs           REAL,
-            exit_ibs            REAL,
-            entry_decision_time TEXT,
-            exit_decision_time  TEXT,
-            pnl_percent         REAL,
-            pnl_absolute        REAL,
-            holding_days        INTEGER,
-            notes               TEXT,
-            linked_broker_trade_id TEXT,
-            source TEXT DEFAULT 'auto',
-            is_hidden INTEGER NOT NULL DEFAULT 0,
-            is_test INTEGER NOT NULL DEFAULT 0,
-            broker_order_id TEXT,
-            client_order_id TEXT,
-            filled_qty REAL,
-            quantity REAL
-        );
-        CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
-        CREATE INDEX IF NOT EXISTS idx_trades_entry_date ON trades(entry_date);
         CREATE TABLE IF NOT EXISTS calendar (
             id      INTEGER PRIMARY KEY CHECK (id = 1),
             data    TEXT NOT NULL
@@ -164,31 +137,6 @@ func (d *DB) initSchema() error {
         CREATE TABLE IF NOT EXISTS auth_credential (
             id          INTEGER PRIMARY KEY CHECK (id = 1),
             fingerprint TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS broker_trades (
-            id                  TEXT PRIMARY KEY,
-            symbol              TEXT NOT NULL,
-            broker              TEXT NOT NULL DEFAULT 'webull',
-            status              TEXT NOT NULL DEFAULT 'open',
-            entry_date          TEXT,
-            exit_date           TEXT,
-            entry_price         REAL,
-            exit_price          REAL,
-            entry_ibs           REAL,
-            exit_ibs            REAL,
-            entry_decision_time TEXT,
-            exit_decision_time  TEXT,
-            pnl_percent         REAL,
-            pnl_absolute        REAL,
-            holding_days        INTEGER,
-            notes               TEXT,
-            source              TEXT DEFAULT 'auto',
-            is_hidden           INTEGER NOT NULL DEFAULT 0,
-            is_test             INTEGER NOT NULL DEFAULT 0,
-            broker_order_id     TEXT,
-            client_order_id     TEXT,
-            filled_qty          REAL,
-            quantity            REAL
         );
         CREATE TABLE IF NOT EXISTS positions (
             id                  TEXT PRIMARY KEY,
@@ -393,7 +341,6 @@ func applyPendingSchema(e schemaExecer, from int) error {
 			// Сколько исполнения по этой заявке уже разнесено по журналу.
 			// Делает применение fill идемпотентным (CORE-04).
 			{"order_trackers", "recorded_qty", "REAL NOT NULL DEFAULT 0"},
-			{"broker_trades", "broker", "TEXT NOT NULL DEFAULT 'webull'"},
 			{"webull_token", "last_alerted_status", "TEXT"},
 			{"webull_token", "last_alerted_at", "TEXT"},
 			{"webull_token", "last_check_raw", "TEXT"},
@@ -404,8 +351,14 @@ func applyPendingSchema(e schemaExecer, from int) error {
 				return err
 			}
 		}
-		if _, err := e.Exec(`CREATE INDEX IF NOT EXISTS idx_broker_trades_broker_status ON broker_trades(broker, status)`); err != nil {
-			return err
+		// Legacy journal: only databases made before `positions` have it.
+		if hasTable(e, "broker_trades") {
+			if err := ensureColumn(e, "broker_trades", "broker", "TEXT NOT NULL DEFAULT 'webull'"); err != nil {
+				return err
+			}
+			if _, err := e.Exec(`CREATE INDEX IF NOT EXISTS idx_broker_trades_broker_status ON broker_trades(broker, status)`); err != nil {
+				return err
+			}
 		}
 	}
 	if from < 3 {
@@ -432,6 +385,9 @@ func applyPendingSchema(e schemaExecer, from int) error {
 		// journal is not half per-share and half money. Idempotent by schema
 		// version: a database already at 5 never runs this again.
 		for _, table := range []string{"broker_trades", "trades"} {
+			if !hasTable(e, table) {
+				continue
+			}
 			if _, err := e.Exec(`UPDATE ` + table + ` SET pnl_absolute = ROUND(pnl_absolute * quantity, 6) WHERE status = 'closed' AND pnl_absolute IS NOT NULL AND quantity IS NOT NULL AND quantity > 0`); err != nil {
 				return err
 			}
@@ -440,7 +396,8 @@ func applyPendingSchema(e schemaExecer, from int) error {
 	if from < 6 {
 		// One position, one row: `trades` + `broker_trades` fold into
 		// `positions`. See mergeLegacyJournals for the matching rules. The old
-		// tables stay in place and stop being written.
+		// tables stay in place, unread and unwritten; fresh databases never get
+		// them.
 		if err := mergeLegacyJournals(e); err != nil {
 			return err
 		}
@@ -499,6 +456,15 @@ func hasColumn(q schemaExecer, table, col string) bool {
 		return false
 	}
 	return false
+}
+
+func hasTable(q schemaExecer, table string) bool {
+	rows, err := q.Query(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`, table)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	return rows.Next()
 }
 
 func ensureColumn(q schemaExecer, table, col, typ string) error {

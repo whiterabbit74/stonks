@@ -90,7 +90,7 @@ Local run does not place broker orders.
 
 ## SQLite
 
-`dataset_meta`, `ohlc`, `splits`, `trades`, `calendar`, `sessions`, `broker_trades`, `telegram_watches`, `telegram_ema_alerts`, `webull_token`. WAL + foreign_keys. `modernc.org/sqlite`, `SetMaxOpenConns(1)`.
+`dataset_meta`, `ohlc`, `splits`, `calendar`, `sessions`, `positions`, `telegram_watches`, `telegram_ema_alerts`, `webull_token`, `order_trackers`, `settings`. Старые `trades` и `broker_trades` остаются только в базах до `positions` (миграция v6), новые базы их не создают. WAL + foreign_keys. `modernc.org/sqlite`, `SetMaxOpenConns(1)`.
 
 ## Charts
 

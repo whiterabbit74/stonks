@@ -194,6 +194,7 @@ func TestOpenUpgradesSchemaVersion4ScalesPnLAbsolute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	createLegacyJournals(t, db.SQL)
 	rows := []struct {
 		id     string
 		status string

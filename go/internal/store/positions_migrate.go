@@ -27,16 +27,18 @@ import (
 // simply stop being written — an unreadable merge should be recoverable by
 // hand, not by restoring a backup.
 func mergeLegacyJournals(e schemaExecer) error {
-	if !hasColumn(e, "trades", "id") {
+	if !hasTable(e, "trades") {
 		return nil
 	}
 	monitors, err := legacyRows(e, "trades")
 	if err != nil {
 		return err
 	}
-	brokers, err := legacyRows(e, "broker_trades")
-	if err != nil {
-		return err
+	var brokers []legacyRow
+	if hasTable(e, "broker_trades") {
+		if brokers, err = legacyRows(e, "broker_trades"); err != nil {
+			return err
+		}
 	}
 
 	byID := map[string]legacyRow{}

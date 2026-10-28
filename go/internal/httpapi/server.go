@@ -396,7 +396,7 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 503, map[string]any{"status": "not_ready", "error": "database unavailable"})
 		return
 	}
-	if !s.DB.HasColumn("broker_trades", "broker") {
+	if !s.DB.HasColumn("order_trackers", "last_fill_price") {
 		writeJSON(w, 503, map[string]any{"status": "not_ready", "error": "schema incomplete"})
 		return
 	}
