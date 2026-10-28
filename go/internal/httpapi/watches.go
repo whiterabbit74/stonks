@@ -221,6 +221,9 @@ func (s *Server) handleEMAAlertPatch(w http.ResponseWriter, r *http.Request) {
 		// levelPct/direction выводятся из nextAction, если их не прислали.
 		delete(saved, "levelPct")
 		delete(saved, "direction")
+	} else {
+		// Прочитанный nextAction мог устареть: алерт успел сработать (AUD-192).
+		delete(saved, "nextAction")
 	}
 	for k, v := range body {
 		saved[k] = v

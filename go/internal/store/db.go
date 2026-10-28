@@ -1662,7 +1662,10 @@ func (d *DB) UpsertEMAAlert(rec map[string]any) (string, error) {
 		return "", fmt.Errorf("symbol required")
 	}
 	next := rec["nextAction"]
-	if next == nil || fmt.Sprint(next) == "" {
+	// No nextAction in rec: an existing alert keeps the side it is on, which
+	// the alert itself flips when it fires (AUD-192).
+	keepNext := next == nil || fmt.Sprint(next) == ""
+	if keepNext {
 		next = "buy"
 	}
 	if rec["levelPct"] == nil {
@@ -1696,9 +1699,9 @@ func (d *DB) UpsertEMAAlert(rec map[string]any) (string, error) {
 	_, err := d.SQL.Exec(`INSERT INTO telegram_ema_alerts (id, symbol, ema_period, level_pct, direction, enabled, buy_level_pct, sell_level_pct, next_action, threshold_pct, info_level_pct)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET symbol=excluded.symbol, ema_period=excluded.ema_period, level_pct=excluded.level_pct, direction=excluded.direction, enabled=excluded.enabled,
-            buy_level_pct=excluded.buy_level_pct, sell_level_pct=excluded.sell_level_pct, next_action=excluded.next_action, threshold_pct=excluded.threshold_pct,
+            buy_level_pct=excluded.buy_level_pct, sell_level_pct=excluded.sell_level_pct, next_action=CASE WHEN ? THEN telegram_ema_alerts.next_action ELSE excluded.next_action END, threshold_pct=excluded.threshold_pct,
             info_level_pct=excluded.info_level_pct, updated_at=datetime('now')`,
-		id, symbol, period, rec["levelPct"], rec["direction"], enabled, rec["buyLevelPct"], rec["sellLevelPct"], next, rec["thresholdPct"], rec["infoLevelPct"])
+		id, symbol, period, rec["levelPct"], rec["direction"], enabled, rec["buyLevelPct"], rec["sellLevelPct"], next, rec["thresholdPct"], rec["infoLevelPct"], keepNext)
 	return id, err
 }
 
