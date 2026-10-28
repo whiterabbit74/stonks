@@ -89,10 +89,6 @@ func (s *Server) handleActualizePrices(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, res)
 }
 
-func (s *Server) handleUpdatePositions(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, s.liveEng().UpdatePositions())
-}
-
 func (s *Server) handleUpdateAll(w http.ResponseWriter, r *http.Request) {
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
 	writeJSON(w, 200, s.liveEng().UpdateAll(true))

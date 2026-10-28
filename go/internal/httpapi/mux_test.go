@@ -33,7 +33,7 @@ var allRoutes = []struct{ Method, Path string }{
 	{"PATCH", "/api/telegram/ema-alerts/{id}"}, {"DELETE", "/api/telegram/ema-alerts/{id}"},
 	{"POST", "/api/telegram/send"}, {"POST", "/api/telegram/test"},
 	{"POST", "/api/telegram/simulate"}, {"POST", "/api/telegram/actualize-prices"},
-	{"POST", "/api/telegram/update-positions"}, {"POST", "/api/telegram/update-all"}, {"POST", "/api/telegram/command"},
+	{"POST", "/api/telegram/update-all"}, {"POST", "/api/telegram/command"},
 	{"GET", "/api/positions"}, {"POST", "/api/positions"}, {"PATCH", "/api/positions/{id}"},
 	{"POST", "/api/positions/{id}/close"}, {"DELETE", "/api/positions/{id}"},
 	{"GET", "/api/monitor/consistency"}, {"POST", "/api/monitor/reconcile"},

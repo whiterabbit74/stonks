@@ -58,7 +58,7 @@ Splits: `GET /api/splits/webull-raw`, `GET /api/splits`, `GET/PUT/PATCH /api/spl
 
 Calendar: `GET /api/trading-calendar`, `GET /api/trading/expected-prev-day`, `POST /api/trading-calendar/fetch-webull` (raw bytes, no persist), `POST /api/trading-calendar/import-webull` (persists holidays/short days), `PATCH /api/trading-calendar/day`.
 
-Telegram: `POST /api/telegram/watch`, `DELETE/PATCH /api/telegram/watch/{symbol}`, `GET /api/telegram/watches`, `GET/POST /api/telegram/ema-alerts`, `PATCH/DELETE /api/telegram/ema-alerts/{id}`, `POST /api/telegram/send`, `POST /api/telegram/test`, `GET /api/telegram/trades`, `POST /api/telegram/simulate`, `POST /api/telegram/actualize-prices`, `POST /api/telegram/update-positions`, `POST /api/telegram/update-all`, `POST /api/telegram/command`.
+Telegram: `POST /api/telegram/watch`, `DELETE/PATCH /api/telegram/watch/{symbol}`, `GET /api/telegram/watches`, `GET/POST /api/telegram/ema-alerts`, `PATCH/DELETE /api/telegram/ema-alerts/{id}`, `POST /api/telegram/send`, `POST /api/telegram/test`, `GET /api/telegram/trades`, `POST /api/telegram/simulate`, `POST /api/telegram/actualize-prices`, `POST /api/telegram/update-all`, `POST /api/telegram/command`.
 
 Monitor trades: `GET/POST /api/trades`, `PATCH /api/trades/{id}`, `POST /api/trades/{id}/close-monitor`, `DELETE /api/trades/{id}`.
 

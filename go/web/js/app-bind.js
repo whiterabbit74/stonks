@@ -927,8 +927,7 @@
             const prices = (r && r.prices) || r || {};
             const n = prices.count;
             const failed = (prices.failedTickers || []).join(', ');
-            const chg = (r && r.positions && r.positions.changes) || [];
-            toast((prices.success || prices.updated ? 'Обновлено' : (prices.reason || 'Цены не обновлены')) + (n != null ? ' · ' + n : '') + (failed ? ' · ошибки: ' + failed : '') + (chg.length ? ' · позиций: ' + chg.length : ''));
+            toast((prices.success || prices.updated ? 'Обновлено' : (prices.reason || 'Цены не обновлены')) + (n != null ? ' · ' + n : '') + (failed ? ' · ошибки: ' + failed : ''));
             state.loaded.watches = false;
             renderPage();
           } catch (err) { toast(errText(err)); }

@@ -492,25 +492,21 @@ func mustWatch(t *testing.T, db *DB, symbol string) map[string]any {
 	return nil
 }
 
-func seedOpenWatch(t *testing.T, db *DB) {
+func seedWatch(t *testing.T, db *DB) {
 	t.Helper()
 	if err := db.UpsertWatch(map[string]any{
-		"symbol":         "AAPL",
-		"lowIBS":         0.1,
-		"highIBS":        0.8,
-		"thresholdPct":   0.4,
-		"isOpenPosition": true,
-		"entryPrice":     100.0,
-		"entryDate":      "2026-09-01",
-		"currentTradeId": "t1",
+		"symbol":       "AAPL",
+		"lowIBS":       0.1,
+		"highIBS":      0.8,
+		"thresholdPct": 0.4,
 	}); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestPatchWatchPreservesOpenPosition(t *testing.T) {
+func TestPatchWatchKeepsOtherThresholds(t *testing.T) {
 	db := openTestDB(t)
-	seedOpenWatch(t, db)
+	seedWatch(t, db)
 	if err := db.PatchWatch("AAPL", map[string]any{"lowIBS": 0.12}); err != nil {
 		t.Fatal(err)
 	}
@@ -524,23 +520,11 @@ func TestPatchWatchPreservesOpenPosition(t *testing.T) {
 	if asFloat(got["thresholdPct"]) != 0.4 {
 		t.Fatalf("thresholdPct=%v want 0.4", got["thresholdPct"])
 	}
-	if got["isOpenPosition"] != true {
-		t.Fatalf("isOpenPosition=%v", got["isOpenPosition"])
-	}
-	if asFloat(got["entryPrice"]) != 100 {
-		t.Fatalf("entryPrice=%v", got["entryPrice"])
-	}
-	if got["entryDate"] != "2026-09-01" {
-		t.Fatalf("entryDate=%v", got["entryDate"])
-	}
-	if got["currentTradeId"] != "t1" {
-		t.Fatalf("currentTradeId=%v", got["currentTradeId"])
-	}
 }
 
-func TestUpsertWatchDoesNotResetOpenPosition(t *testing.T) {
+func TestUpsertWatchKeepsOtherThresholds(t *testing.T) {
 	db := openTestDB(t)
-	seedOpenWatch(t, db)
+	seedWatch(t, db)
 	if err := db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.11}); err != nil {
 		t.Fatal(err)
 	}
@@ -551,17 +535,32 @@ func TestUpsertWatchDoesNotResetOpenPosition(t *testing.T) {
 	if asFloat(got["highIBS"]) != 0.8 {
 		t.Fatalf("highIBS=%v want preserved 0.8", got["highIBS"])
 	}
-	if got["isOpenPosition"] != true {
-		t.Fatalf("isOpenPosition=%v", got["isOpenPosition"])
+}
+
+// Position state lives in the journal only: the watch neither stores nor
+// accepts it. Unknown keys are ignored like any other; a patch of nothing but
+// position keys has nothing to write.
+func TestPatchWatchIgnoresPositionKeys(t *testing.T) {
+	db := openTestDB(t)
+	seedWatch(t, db)
+	pos := map[string]any{"isOpenPosition": true, "entryPrice": 100.0, "entryDate": "2026-09-01",
+		"entryIBS": 0.05, "entryDecisionTime": "x", "currentTradeId": "t1"}
+	if err := db.PatchWatch("AAPL", pos); err == nil {
+		t.Fatal("a patch of only position keys must be refused: nothing patchable")
 	}
-	if asFloat(got["entryPrice"]) != 100 {
-		t.Fatalf("entryPrice=%v", got["entryPrice"])
+	pos["lowIBS"] = 0.12
+	if err := db.PatchWatch("AAPL", pos); err != nil {
+		t.Fatal(err)
 	}
-	if got["entryDate"] != "2026-09-01" {
-		t.Fatalf("entryDate=%v", got["entryDate"])
+	got := mustWatch(t, db, "AAPL")
+	for _, k := range []string{"isOpenPosition", "entryPrice", "entryDate", "entryIBS", "entryDecisionTime", "currentTradeId"} {
+		if _, ok := got[k]; ok {
+			t.Fatalf("watch carries %s = %v; position state belongs to the journal", k, got[k])
+		}
 	}
-	if got["currentTradeId"] != "t1" {
-		t.Fatalf("currentTradeId=%v", got["currentTradeId"])
+	var n int
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('telegram_watches') WHERE name IN ('is_open_position','entry_price','current_trade_id')`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("fresh schema still has %d position columns on telegram_watches (err %v)", n, err)
 	}
 }
 

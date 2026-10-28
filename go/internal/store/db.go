@@ -175,12 +175,6 @@ func (d *DB) initSchema() error {
             low_ibs              REAL NOT NULL DEFAULT 0.1,
             threshold_pct        REAL NOT NULL DEFAULT 0.3,
             chat_id              TEXT,
-            entry_price          REAL,
-            entry_date           TEXT,
-            entry_ibs            REAL,
-            entry_decision_time  TEXT,
-            current_trade_id     TEXT,
-            is_open_position     INTEGER NOT NULL DEFAULT 0,
             sent_date_key        TEXT,
             sent_warn10          INTEGER NOT NULL DEFAULT 0,
             sent_confirm1        INTEGER NOT NULL DEFAULT 0,
@@ -1412,36 +1406,29 @@ func (d *DB) UpdateSettingsKeys(fn func(current map[string]any) (map[string]any,
 	return nil
 }
 
+// ListWatches returns the watchlist: tickers and their thresholds. Whether a
+// position is open is not a property of the watch — the journal (`positions`)
+// answers that. Older databases still carry is_open_position/entry_*/
+// current_trade_id columns on this table; nothing reads or writes them.
 func (d *DB) ListWatches() ([]map[string]any, error) {
-	rows, err := d.SQL.Query(`SELECT symbol, high_ibs, low_ibs, threshold_pct, chat_id, entry_price, entry_date, entry_ibs, entry_decision_time, current_trade_id, is_open_position FROM telegram_watches ORDER BY symbol`)
+	rows, err := d.SQL.Query(`SELECT symbol, high_ibs, low_ibs, threshold_pct, chat_id FROM telegram_watches ORDER BY symbol`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []map[string]any
+	out := []map[string]any{}
 	for rows.Next() {
 		var symbol string
 		var high, low, thr float64
-		var chat, entryDate, entryDec, tradeID sql.NullString
-		var entryPrice, entryIBS sql.NullFloat64
-		var open int
-		if err := rows.Scan(&symbol, &high, &low, &thr, &chat, &entryPrice, &entryDate, &entryIBS, &entryDec, &tradeID, &open); err != nil {
+		var chat sql.NullString
+		if err := rows.Scan(&symbol, &high, &low, &thr, &chat); err != nil {
 			return nil, err
 		}
 		out = append(out, map[string]any{
-			"symbol": symbol, "highIBS": high, "lowIBS": low, "thresholdPct": thr,
-			"chatId": chat.String, "entryPrice": nullF(entryPrice), "entryDate": nullS(entryDate),
-			"entryIBS": nullF(entryIBS), "entryDecisionTime": nullS(entryDec),
-			"currentTradeId": nullS(tradeID), "isOpenPosition": open == 1,
+			"symbol": symbol, "highIBS": high, "lowIBS": low, "thresholdPct": thr, "chatId": chat.String,
 		})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if out == nil {
-		out = []map[string]any{}
-	}
-	return out, nil
+	return out, rows.Err()
 }
 
 func nullF(v sql.NullFloat64) any {
@@ -1478,41 +1465,16 @@ func watchChatID(w map[string]any) string {
 	return s
 }
 
-func watchOpenFlag(v any) int {
-	switch t := v.(type) {
-	case bool:
-		if t {
-			return 1
-		}
-		return 0
-	default:
-		if asFloat(v) != 0 {
-			return 1
-		}
-		return 0
-	}
-}
-
 // watchPatchColumns is the whitelist of JSON keys PatchWatch may write.
-// Position columns are included so the live engine can update an open
-// position without going through UpsertWatch (which never clobbers them).
+// Position state is not here: it lives in the journal only.
 var watchPatchColumns = map[string]string{
-	"highIBS":           "high_ibs",
-	"lowIBS":            "low_ibs",
-	"thresholdPct":      "threshold_pct",
-	"chatId":            "chat_id",
-	"isOpenPosition":    "is_open_position",
-	"entryPrice":        "entry_price",
-	"entryDate":         "entry_date",
-	"entryIBS":          "entry_ibs",
-	"entryDecisionTime": "entry_decision_time",
-	"currentTradeId":    "current_trade_id",
+	"highIBS":      "high_ibs",
+	"lowIBS":       "low_ibs",
+	"thresholdPct": "threshold_pct",
+	"chatId":       "chat_id",
 }
 
-var watchNumericPatch = map[string]bool{
-	"highIBS": true, "lowIBS": true, "thresholdPct": true,
-	"entryPrice": true, "entryIBS": true,
-}
+var watchNumericPatch = map[string]bool{"highIBS": true, "lowIBS": true, "thresholdPct": true}
 
 var watchCreatePatchKeys = []string{"highIBS", "lowIBS", "thresholdPct", "chatId"}
 
@@ -1540,12 +1502,8 @@ func (d *DB) UpsertWatch(w map[string]any) error {
 	high := watchFloatOrDefault(w, "highIBS", 0.75)
 	low := watchFloatOrDefault(w, "lowIBS", 0.1)
 	thr := watchFloatOrDefault(w, "thresholdPct", 0.3)
-	open := 0
-	if v, ok := w["isOpenPosition"]; ok {
-		open = watchOpenFlag(v)
-	}
-	_, err := d.SQL.Exec(`INSERT INTO telegram_watches (symbol, high_ibs, low_ibs, threshold_pct, chat_id, is_open_position, entry_price, entry_date, current_trade_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		symbol, high, low, thr, watchChatID(w), open, w["entryPrice"], w["entryDate"], w["currentTradeId"])
+	_, err := d.SQL.Exec(`INSERT INTO telegram_watches (symbol, high_ibs, low_ibs, threshold_pct, chat_id) VALUES (?, ?, ?, ?, ?)`,
+		symbol, high, low, thr, watchChatID(w))
 	return err
 }
 
@@ -1563,8 +1521,6 @@ func (d *DB) PatchWatch(symbol string, fields map[string]any) error {
 		}
 		sets = append(sets, col+"=?")
 		switch {
-		case key == "isOpenPosition":
-			args = append(args, watchOpenFlag(v))
 		case key == "chatId":
 			if v == nil {
 				args = append(args, "")

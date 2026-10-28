@@ -129,18 +129,10 @@ func (e *Engine) Reconcile(apply bool) map[string]any {
 				failedActions = append(failedActions, row)
 			}
 		}
-		pos := e.UpdatePositions()
-		snap["positions"] = pos
-		if n := asFloat(pos["updated"]); n > 0 {
-			appliedActions = append(appliedActions, map[string]any{
-				"type": "sync_watch_open_flags", "appliedAt": e.now().UTC().Format(time.RFC3339Nano),
-			})
-		}
 	}
 	after := snap
 	if apply {
 		after = e.Consistency()
-		after["positions"] = snap["positions"]
 	}
 	after["appliedActions"] = appliedActions
 	after["failedActions"] = failedActions

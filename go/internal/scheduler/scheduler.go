@@ -609,16 +609,7 @@ func RunPriceActualization(db *store.DB, deps Deps) (ok, fail int, skipped bool)
 		return 0, 0, true
 	}
 	defer actualizeMu.Unlock()
-	eng := engine(db, deps)
-	res := eng.Actualize(false)
-	// Флаг «в мониторинге» на строке наблюдения — производная от журнала, и
-	// пересчитывался он только руками оператора (AUD-110). Открытая движком
-	// позиция расходилась с наблюдением до следующего нажатия кнопки.
-	// Ошибка здесь означает, что синхронизация не состоялась и карточки
-	// наблюдения врут до следующего запуска: молчать о ней нельзя (AUD-N02).
-	if sync := eng.UpdatePositions(); sync["success"] != true {
-		log.Printf("scheduler: watch position sync failed: %v (%v)", sync["error"], sync["message"])
-	}
+	res := engine(db, deps).Actualize(false)
 	return res.Count, len(res.Failed), false
 }
 

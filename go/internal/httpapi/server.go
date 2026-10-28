@@ -173,7 +173,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/telegram/test", wrap(s.handleTelegramTest))
 	s.mux.HandleFunc("POST /api/telegram/simulate", wrap(s.handleTelegramSimulate))
 	s.mux.HandleFunc("POST /api/telegram/actualize-prices", wrap(s.handleActualizePrices))
-	s.mux.HandleFunc("POST /api/telegram/update-positions", wrap(s.handleUpdatePositions))
 	s.mux.HandleFunc("POST /api/telegram/update-all", wrap(s.handleUpdateAll))
 	s.mux.HandleFunc("POST /api/telegram/command", wrap(s.handleTelegramCommand))
 	s.mux.HandleFunc("GET /api/monitor/consistency", wrap(s.handleMonitorConsistency))
@@ -1330,11 +1329,41 @@ func deleteNested(root map[string]any, year, mmdd string) {
 	delete(yearMap, mmdd)
 }
 
+// handleWatches returns the watchlist with each ticker's open monitoring
+// position read from the journal at request time. The journal is the only
+// place a position lives: an unreadable journal is an error, not "nothing open".
 func (s *Server) handleWatches(w http.ResponseWriter, r *http.Request) {
 	list, err := s.DB.ListWatches()
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
+	}
+	open, err := s.DB.OpenPositions()
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+	bySym := map[string]store.Position{}
+	for _, p := range open { // newest first: the first one per ticker wins
+		if _, seen := bySym[p.Symbol]; !seen && !p.IsTest && !p.IsHidden {
+			bySym[p.Symbol] = p
+		}
+	}
+	for _, wt := range list {
+		p, ok := bySym[wt["symbol"].(string)]
+		wt["isOpenPosition"] = ok
+		wt["entryPrice"], wt["entryDate"], wt["entryIBS"], wt["entryDecisionTime"], wt["currentTradeId"] = nil, nil, nil, nil, nil
+		if !ok {
+			continue
+		}
+		price := p.EntryPrice // the signal price; a broker fill when there is none
+		for _, leg := range []store.BrokerLeg{p.Webull, p.Robinhood} {
+			if price == nil {
+				price = leg.EntryPrice
+			}
+		}
+		wt["entryPrice"], wt["entryDate"], wt["entryIBS"] = price, p.EntryDate, p.EntryIBS
+		wt["entryDecisionTime"], wt["currentTradeId"] = p.EntryDecisionTime, p.ID
 	}
 	writeJSON(w, 200, list)
 }

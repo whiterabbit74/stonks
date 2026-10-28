@@ -392,14 +392,36 @@ func TestSimulateSplitJumpAndEmaAndFillPoll(t *testing.T) {
 	}
 }
 
-func TestWatchesGETDoesNotSyncOpenMonitorTrade(t *testing.T) {
+// The journal is the only source of "a position is open": the watch list reads
+// it at request time. A database from before keeps the old position columns on
+// telegram_watches, and whatever they say is ignored.
+func TestWatchesGETReadsOpenPositionFromJournal(t *testing.T) {
 	s, _, _ := liveServer(t)
-	if err := s.DB.SavePosition(store.Position{ID: "m-aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01", EntryPrice: store.Ptr[float64](10.5)}); err != nil {
+	for _, sym := range []string{"AAPL", "MSFT"} {
+		if err := s.DB.UpsertWatch(map[string]any{"symbol": sym, "lowIBS": 0.1, "highIBS": 0.75}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, ddl := range []string{
+		`ALTER TABLE telegram_watches ADD COLUMN is_open_position INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE telegram_watches ADD COLUMN current_trade_id TEXT`,
+		`ALTER TABLE telegram_watches ADD COLUMN entry_price REAL`,
+	} {
+		_, _ = s.DB.SQL.Exec(ddl) // a database from before already has them
+	}
+	if _, err := s.DB.SQL.Exec(`UPDATE telegram_watches SET is_open_position=1, current_trade_id='stale', entry_price=99 WHERE symbol='AAPL'`); err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest("GET", "/api/telegram/watches", nil)
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
+	if err := s.DB.SavePosition(store.Position{ID: "m-msft", Symbol: "MSFT", Status: "open", EntryDate: "2026-09-01",
+		EntryIBS: store.Ptr(0.05), Webull: store.BrokerLeg{Qty: 2, EntryPrice: store.Ptr(10.5)}}); err != nil {
+		t.Fatal(err)
+	}
+	get := func() *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/telegram/watches", nil))
+		return rec
+	}
+	rec := get()
 	if rec.Code != 200 {
 		t.Fatalf("watches %d %s", rec.Code, rec.Body.String())
 	}
@@ -407,17 +429,27 @@ func TestWatchesGETDoesNotSyncOpenMonitorTrade(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
 	}
-	found := false
+	by := map[string]map[string]any{}
 	for _, w := range list {
-		if fmt.Sprint(w["symbol"]) == "AAPL" {
-			found = true
-			if w["isOpenPosition"] != false {
-				t.Fatalf("GET must not update position projection: %+v", w)
-			}
-		}
+		by[fmt.Sprint(w["symbol"])] = w
 	}
-	if !found {
-		t.Fatalf("AAPL missing: %s", rec.Body.String())
+	if a := by["AAPL"]; a["isOpenPosition"] != false || a["currentTradeId"] != nil || a["entryPrice"] != nil {
+		t.Fatalf("AAPL holds nothing in the journal, legacy columns must not show: %+v", a)
+	}
+	if m := by["MSFT"]; m["isOpenPosition"] != true || m["currentTradeId"] != "m-msft" || m["entryPrice"] != 10.5 ||
+		m["entryDate"] != "2026-09-01" || m["entryIBS"] != 0.05 {
+		t.Fatalf("MSFT must show the journal's open position (broker price when no signal price): %+v", m)
+	}
+
+	if rec := patchJSON(s, "/api/telegram/watch/AAPL", map[string]any{"isOpenPosition": true, "currentTradeId": "x"}); rec.Code == 200 {
+		t.Fatalf("PATCH of only position keys must be refused: %s", rec.Body.String())
+	}
+
+	if _, err := s.DB.SQL.Exec(`DROP TABLE positions`); err != nil {
+		t.Fatal(err)
+	}
+	if rec := get(); rec.Code != 500 {
+		t.Fatalf("an unreadable journal is an error, not \"nothing open\": %d %s", rec.Code, rec.Body.String())
 	}
 }
 

@@ -2,42 +2,10 @@ package live
 
 import (
 	"fmt"
-	"mktorder.com/go/internal/store"
+
 	"strings"
 	"testing"
 )
-
-// AUD-002: UpdatePositions writes on what it reads. An unreadable monitor
-// journal looked like "no open trades" and cleared isOpenPosition and
-// currentTradeId on every watch, while still reporting success.
-func TestAUD002UnreadableJournalDoesNotClearOpenWatches(t *testing.T) {
-	_, e, _ := testEngine(t, nil)
-	if err := e.DB.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75}); err != nil {
-		t.Fatal(err)
-	}
-	if err := e.DB.SavePosition(store.Position{ID: "t-aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01", EntryPrice: store.Ptr[float64](10.0)}); err != nil {
-		t.Fatal(err)
-	}
-	if res := e.UpdatePositions(); res["success"] != true {
-		t.Fatalf("healthy read must succeed: %+v", res)
-	}
-	if _, err := e.DB.SQL.Exec(`DROP TABLE positions`); err != nil {
-		t.Fatal(err)
-	}
-	res := e.UpdatePositions()
-	if res["success"] != false || res["error"] != "state_read_failed" {
-		t.Fatalf("unreadable journal must fail loudly: %+v", res)
-	}
-	watches, err := e.DB.ListWatches()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, w := range watches {
-		if b, _ := w["isOpenPosition"].(bool); !b {
-			t.Fatalf("open flag must survive an unreadable journal: %+v", w)
-		}
-	}
-}
 
 // AUD-002: an exit fill whose local rows cannot be read used to be dropped in
 // silence — the broker was flat, the journal still showed the position open,
