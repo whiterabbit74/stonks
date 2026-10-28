@@ -145,11 +145,7 @@ func (d *DB) OpenMonitorPosition(p Position) (*Position, error) {
 		return nil, err
 	}
 	defer tx.Rollback()
-	var one int
-	switch err := tx.QueryRow(`SELECT 1 FROM positions WHERE status='open' AND is_test=0 AND is_hidden=0 LIMIT 1`).Scan(&one); {
-	case err == nil:
-		return nil, ErrMonitorPositionOpen
-	case err != sql.ErrNoRows:
+	if err := monitorPositionFree(tx, ""); err != nil {
 		return nil, err
 	}
 	p.Symbol, p.Status, p.Source = SafeTicker(p.Symbol), "open", SourceMonitor
@@ -160,6 +156,41 @@ func (d *DB) OpenMonitorPosition(p Position) (*Position, error) {
 		return nil, err
 	}
 	return &p, nil
+}
+
+// monitorPositionFree refuses with ErrMonitorPositionOpen while any row other
+// than exceptID ("" excepts none) is the monitoring's open position.
+func monitorPositionFree(tx *sql.Tx, exceptID string) error {
+	var one int
+	err := tx.QueryRow(`SELECT 1 FROM positions WHERE status='open' AND is_test=0 AND is_hidden=0 AND (?='' OR id<>?) LIMIT 1`, exceptID, exceptID).Scan(&one)
+	switch {
+	case err == nil:
+		return ErrMonitorPositionOpen
+	case err != sql.ErrNoRows:
+		return err
+	}
+	return nil
+}
+
+// isMonitorOpen is a row that counts as the monitoring's open position.
+func (p *Position) isMonitorOpen() bool {
+	return (p.Status == "" || p.Status == "open") && !p.IsTest && !p.IsHidden
+}
+
+// manualMonitorFree is the operator's side of invariant H: a typed or edited
+// row may not become a second monitoring position (the check runs in the
+// transaction that writes the row).
+func manualMonitorFree(tx *sql.Tx, p *Position, exceptID string) error {
+	if !p.isMonitorOpen() {
+		return nil
+	}
+	if err := monitorPositionFree(tx, exceptID); err != nil {
+		if errors.Is(err, ErrMonitorPositionOpen) {
+			return ValidationError(err.Error())
+		}
+		return err
+	}
+	return nil
 }
 
 // ExitRowFor finds the position a broker's sell belongs to: the one whose leg
@@ -355,7 +386,18 @@ func (d *DB) AddPosition(p Position) error {
 		return err
 	}
 	p.ID = ""
-	return savePositionOn(d.SQL, p)
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := manualMonitorFree(tx, &p, ""); err != nil {
+		return err
+	}
+	if err := savePositionOn(tx, p); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // PatchPosition applies an operator's edit to the stored row and writes the
@@ -394,6 +436,9 @@ func (d *DB) PatchPosition(id string, edit func(*Position) error) (*Position, er
 		return nil, ValidationError("Ноги брокеров меняет только исполнение")
 	}
 	if err := p.checkManual(); err != nil {
+		return nil, err
+	}
+	if err := manualMonitorFree(tx, &p, id); err != nil {
 		return nil, err
 	}
 	p.ID = id
