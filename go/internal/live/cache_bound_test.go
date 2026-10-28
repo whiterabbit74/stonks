@@ -19,16 +19,3 @@ func TestQuoteCacheIsBounded(t *testing.T) {
 		t.Fatalf("quoteCache grew to %d, cap 256", n)
 	}
 }
-
-func TestOrderMetaIsBounded(t *testing.T) {
-	e := &Engine{}
-	for i := 0; i < 400; i++ {
-		e.rememberOrder(fmt.Sprintf("id-%d", i), orderMeta{Symbol: "AAPL"})
-	}
-	e.mu.Lock()
-	n := len(e.orderMeta)
-	e.mu.Unlock()
-	if n > 256 {
-		t.Fatalf("orderMeta grew to %d, cap 256", n)
-	}
-}

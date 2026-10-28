@@ -15,10 +15,6 @@ import (
 func TestAUD002UnreadableJournalOnExitFillRaisesBlock(t *testing.T) {
 	_, e, _ := testEngine(t, nil)
 	id := "oid-exit-unreadable"
-	seedOrderMeta(e, id, orderMeta{
-		Action: "exit", Symbol: "AAPL", Quantity: 1,
-		Broker: "webull", DateKey: "2026-09-01",
-	})
 	if _, err := e.DB.SQL.Exec(`DROP TABLE positions`); err != nil {
 		t.Fatal(err)
 	}

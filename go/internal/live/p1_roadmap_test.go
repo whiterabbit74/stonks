@@ -123,12 +123,6 @@ func TestExecuteReportsSubmittedPhase(t *testing.T) {
 func TestUnconfirmedFillPriceDoesNotUseQuote(t *testing.T) {
 	_, e, _ := testEngine(t, nil)
 	id := "oid-noprice"
-	e.mu.Lock()
-	if e.orderMeta == nil {
-		e.orderMeta = map[string]orderMeta{}
-	}
-	e.orderMeta[id] = orderMeta{Action: "entry", Symbol: "AAPL", Quantity: 1, QuotePrice: 8.2, DateKey: "2026-09-01", Broker: "webull"}
-	e.mu.Unlock()
 	e.recordFill(store.Tracker{
 		ClientOrderID: id, Symbol: "AAPL", Action: "entry", Quantity: 1.0, DateKey: "2026-09-01",
 	}, map[string]any{"status": "filled", "filled_qty": 1.0}, "filled")
@@ -142,12 +136,6 @@ func TestPartialEntryUpsertsQuantity(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, _ := testEngine(t, bars)
 	id := "oid-partial"
-	e.mu.Lock()
-	if e.orderMeta == nil {
-		e.orderMeta = map[string]orderMeta{}
-	}
-	e.orderMeta[id] = orderMeta{Action: "entry", Symbol: "AAPL", Quantity: 10, Broker: "webull", DateKey: "2026-09-01"}
-	e.mu.Unlock()
 	e.recordFill(store.Tracker{
 		ClientOrderID: id, Symbol: "AAPL", Action: "entry", Quantity: 10.0, DateKey: "2026-09-01",
 	}, map[string]any{"status": "filled", "filled_qty": 5.0, "avg_price": 8.2}, "filled")

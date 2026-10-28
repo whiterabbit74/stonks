@@ -27,11 +27,12 @@ func TestAUD126AmbiguousOrderKeepsDecisionIBS(t *testing.T) {
 	if id == "" {
 		t.Fatalf("want an ambiguous result carrying the id, got %+v", res.Broker)
 	}
-	e.mu.Lock()
-	got := e.orderMeta[id].IBS
-	e.mu.Unlock()
-	if want := 0.05; got < want-1e-9 || got > want+1e-9 {
-		t.Fatalf("ambiguous order meta IBS = %v, want the decision reading %v", got, want)
+	tr := e.DB.GetOrderTracker(id)
+	if tr == nil || tr.DecisionIBS == nil {
+		t.Fatalf("ambiguous order tracker lost the decision IBS: %+v", tr)
+	}
+	if got, want := *tr.DecisionIBS, 0.05; got < want-1e-9 || got > want+1e-9 {
+		t.Fatalf("ambiguous order decision IBS = %v, want the decision reading %v", got, want)
 	}
 }
 
@@ -40,13 +41,10 @@ func TestAUD126AmbiguousOrderKeepsDecisionIBS(t *testing.T) {
 func TestAUD126EntryAtZeroIBSIsJournaled(t *testing.T) {
 	db, e, _ := testEngine(t, nil)
 	id := "zero-ibs"
-	seedOrderMeta(e, id, orderMeta{
-		CorrelationID: "c1", IBS: 0, Action: "entry", Symbol: "AAPL",
-		Quantity: 1, Broker: "webull", DateKey: "2026-09-01",
-	})
 	e.recordFill(store.Tracker{
 		ClientOrderID: id, Symbol: "AAPL", Action: "entry",
 		Quantity: 1.0, DateKey: "2026-09-01", Broker: "webull",
+		CorrelationID: "c1", DecisionIBS: orderMeta{CorrelationID: "c1", IBS: 0}.decisionIBS(),
 	}, map[string]any{"status": "filled", "filled_qty": 1.0, "avg_price": 8}, "filled")
 	p, err := db.OpenPositionBySymbol("AAPL")
 	if err != nil || p == nil {

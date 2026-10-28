@@ -22,7 +22,7 @@ import (
 
 // SchemaVersion is the schema this binary can open and migrate to.
 // Bump it when adding a migrateSchema step. Open fails if the database is newer.
-const SchemaVersion = 9
+const SchemaVersion = 10
 
 type DB struct {
 	SQL *sql.DB
@@ -420,6 +420,18 @@ func applyPendingSchema(e schemaExecer, from int) error {
 		// цена новой части = прирост стоимости заявки, а не её средняя (AUD-180).
 		if err := ensureColumn(e, "order_trackers", "recorded_price", "REAL"); err != nil {
 			return err
+		}
+	}
+	if from < 10 {
+		// С чем заявка ушла: id цикла, IBS решения и котировка. Жили только в
+		// памяти процесса, и перезапуск между отправкой и исполнением рвал
+		// цепочку в логе и оставлял exit_ibs пустым.
+		for _, col := range []struct{ name, typ string }{
+			{"correlation_id", "TEXT"}, {"decision_ibs", "REAL"}, {"quote_price", "REAL"},
+		} {
+			if err := ensureColumn(e, "order_trackers", col.name, col.typ); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

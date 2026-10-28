@@ -34,11 +34,11 @@ func partialExitEngine(t *testing.T, withPosition bool) (*Engine, *store.DB, *Me
 	tracker := store.Tracker{
 		ClientOrderID: "x-exit", Symbol: "AAPL", Action: "exit", Status: "submitted",
 		Quantity: 10.0, Source: "telegram_t1", DateKey: "2026-09-01", Broker: "webull",
+		CorrelationID: "corr", DecisionIBS: store.Ptr(0.8),
 	}
 	if err := db.SaveOrderTracker(tracker); err != nil {
 		t.Fatal(err)
 	}
-	e.orderMeta = map[string]orderMeta{"x-exit": {CorrelationID: "corr", IBS: 0.8, Broker: "webull"}}
 	return e, db, tg, tracker
 }
 

@@ -164,18 +164,9 @@ func TestRobinhoodFillDoesNotCloseWebullLeg(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	e.mu.Lock()
-	if e.orderMeta == nil {
-		e.orderMeta = map[string]orderMeta{}
-	}
-	e.orderMeta["rh-sell"] = orderMeta{
-		Action: "exit", Symbol: "AAPL", Quantity: 3, Broker: "robinhood",
-		QuotePrice: 11.9, DateKey: "2026-09-01",
-	}
-	e.mu.Unlock()
 	e.recordFill(store.Tracker{
 		ClientOrderID: "rh-sell", Symbol: "AAPL", Action: "exit",
-		Source: "t1", DateKey: "2026-09-01", Quantity: 3.0,
+		Source: "t1", DateKey: "2026-09-01", Quantity: 3.0, Broker: "robinhood", QuotePrice: 11.9,
 	}, map[string]any{"status": "filled", "avg_price": 11.9, "filled_qty": 3.0}, "filled")
 	p, _ := e.DB.GetPosition("aapl")
 	if p == nil || p.Status != "open" {

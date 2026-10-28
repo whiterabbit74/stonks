@@ -227,16 +227,21 @@ type Tracker struct {
 	StartedAt     string  `json:"startedAt"`
 	Attempts      int     `json:"attempts"`
 	Broker        string  `json:"broker"`
-	UpdatedAt     string  `json:"-"`
-	RecordedQty   float64 `json:"-"`
-	RecordedPrice float64 `json:"-"`
-	LastFilledQty float64 `json:"-"`
-	LastFillPrice float64 `json:"-"`
+	// What the order was sent on: the cycle's correlation id, the IBS reading
+	// of the decision (nil when it was not a strategy decision) and the quote.
+	CorrelationID string   `json:"-"`
+	DecisionIBS   *float64 `json:"-"`
+	QuotePrice    float64  `json:"-"`
+	UpdatedAt     string   `json:"-"`
+	RecordedQty   float64  `json:"-"`
+	RecordedPrice float64  `json:"-"`
+	LastFilledQty float64  `json:"-"`
+	LastFillPrice float64  `json:"-"`
 }
 
 // SaveOrderTracker inserts the tracker or, for an existing id, updates its
-// status, quantity and broker. Empty status means "submitted", empty start
-// means now, empty broker means Webull.
+// status, quantity and broker, and fills in order metadata it did not have yet.
+// Empty status means "submitted", empty start means now, empty broker means Webull.
 func (d *DB) SaveOrderTracker(rec Tracker) error {
 	if strings.TrimSpace(rec.ClientOrderID) == "" {
 		return fmt.Errorf("clientOrderId required")
@@ -250,12 +255,18 @@ func (d *DB) SaveOrderTracker(rec Tracker) error {
 	if rec.Broker == "" {
 		rec.Broker = "webull"
 	}
-	_, err := d.SQL.Exec(`INSERT INTO order_trackers (client_order_id, symbol, action, broker, status, quantity, source, date_key, started_at, attempts, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+	_, err := d.SQL.Exec(`INSERT INTO order_trackers (client_order_id, symbol, action, broker, status, quantity, source, date_key, started_at, attempts,
+            correlation_id, decision_ibs, quote_price, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), ?, NULLIF(?, 0), datetime('now'))
         ON CONFLICT(client_order_id) DO UPDATE SET
             status=CASE WHEN order_trackers.status IN (`+terminalTrackerStatuses+`) THEN order_trackers.status ELSE excluded.status END,
-            quantity=excluded.quantity, broker=excluded.broker, updated_at=datetime('now')`,
-		rec.ClientOrderID, SafeTicker(rec.Symbol), rec.Action, rec.Broker, rec.Status, rec.Quantity, rec.Source, rec.DateKey, rec.StartedAt, rec.Attempts)
+            quantity=excluded.quantity, broker=excluded.broker,
+            correlation_id=COALESCE(order_trackers.correlation_id, excluded.correlation_id),
+            decision_ibs=COALESCE(order_trackers.decision_ibs, excluded.decision_ibs),
+            quote_price=COALESCE(order_trackers.quote_price, excluded.quote_price),
+            updated_at=datetime('now')`,
+		rec.ClientOrderID, SafeTicker(rec.Symbol), rec.Action, rec.Broker, rec.Status, rec.Quantity, rec.Source, rec.DateKey, rec.StartedAt, rec.Attempts,
+		rec.CorrelationID, rec.DecisionIBS, rec.QuotePrice)
 	return err
 }
 
@@ -509,7 +520,8 @@ func (d *DB) ListRecentTrackers(limit int) ([]Tracker, error) {
 // listTrackers reads the trackers the clause selects; never nil on success.
 func (d *DB) listTrackers(clause string, args ...any) ([]Tracker, error) {
 	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at,
-            attempts, COALESCE(broker,'webull'), updated_at, recorded_qty, recorded_price, last_filled_qty, last_fill_price
+            attempts, COALESCE(broker,'webull'), updated_at, recorded_qty, recorded_price, last_filled_qty, last_fill_price,
+            correlation_id, decision_ibs, quote_price
         FROM order_trackers `+clause, args...)
 	if err != nil {
 		return nil, err
@@ -518,17 +530,21 @@ func (d *DB) listTrackers(clause string, args ...any) ([]Tracker, error) {
 	out := []Tracker{}
 	for rows.Next() {
 		var t Tracker
-		var source, dateKey, started, updated sql.NullString
-		var qty, recorded, recordedPrice, lastQty, lastPrice sql.NullFloat64
+		var source, dateKey, started, updated, corr sql.NullString
+		var qty, recorded, recordedPrice, lastQty, lastPrice, ibs, quote sql.NullFloat64
 		var attempts sql.NullInt64
 		if err := rows.Scan(&t.ClientOrderID, &t.Symbol, &t.Action, &t.Status, &qty, &source, &dateKey, &started,
-			&attempts, &t.Broker, &updated, &recorded, &recordedPrice, &lastQty, &lastPrice); err != nil {
+			&attempts, &t.Broker, &updated, &recorded, &recordedPrice, &lastQty, &lastPrice, &corr, &ibs, &quote); err != nil {
 			return nil, err
 		}
 		t.Quantity, t.Source, t.DateKey, t.StartedAt = qty.Float64, source.String, dateKey.String, started.String
 		t.Attempts, t.UpdatedAt = int(attempts.Int64), updated.String
 		t.RecordedQty, t.RecordedPrice = recorded.Float64, recordedPrice.Float64
 		t.LastFilledQty, t.LastFillPrice = lastQty.Float64, lastPrice.Float64
+		t.CorrelationID, t.QuotePrice = corr.String, quote.Float64
+		if ibs.Valid {
+			t.DecisionIBS = &ibs.Float64
+		}
 		if t.Broker == "" {
 			t.Broker = "webull"
 		}

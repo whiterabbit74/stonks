@@ -8,15 +8,6 @@ import (
 	"testing"
 )
 
-func seedOrderMeta(e *Engine, id string, meta orderMeta) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.orderMeta == nil {
-		e.orderMeta = map[string]orderMeta{}
-	}
-	e.orderMeta[id] = meta
-}
-
 func telegramBody(t *testing.T, e *Engine) string {
 	t.Helper()
 	tg, ok := e.Telegram.(*MemoryTelegram)
@@ -36,10 +27,6 @@ func TestFillMessagesUseTrackerBroker(t *testing.T) {
 	t.Run("partial_from_meta", func(t *testing.T) {
 		_, e, _ := testEngine(t, nil)
 		id := "rh-partial"
-		seedOrderMeta(e, id, orderMeta{
-			Action: "entry", Symbol: "AAPL", Quantity: 10,
-			Broker: "robinhood", DateKey: "2026-09-01",
-		})
 		e.recordFill(store.Tracker{
 			ClientOrderID: id, Symbol: "AAPL", Action: "entry",
 			Quantity: 10.0, DateKey: "2026-09-01", Broker: "robinhood",
@@ -55,9 +42,6 @@ func TestFillMessagesUseTrackerBroker(t *testing.T) {
 	t.Run("partial_from_tracker_row", func(t *testing.T) {
 		_, e, _ := testEngine(t, nil)
 		id := "rh-partial-row"
-		seedOrderMeta(e, id, orderMeta{
-			Action: "entry", Symbol: "AAPL", Quantity: 10, DateKey: "2026-09-01",
-		})
 		e.recordFill(store.Tracker{
 			ClientOrderID: id, Symbol: "AAPL", Action: "entry",
 			Quantity: 10.0, DateKey: "2026-09-01", Broker: "robinhood",
@@ -74,13 +58,9 @@ func TestFillMessagesUseTrackerBroker(t *testing.T) {
 		_, e, _ := testEngine(t, nil)
 		e.PatchAutoConfig(map[string]any{"maxSlippageBps": 25})
 		id := "rh-slip"
-		seedOrderMeta(e, id, orderMeta{
-			Action: "entry", Symbol: "AAPL", Quantity: 1,
-			Broker: "robinhood", QuotePrice: 8.2, DateKey: "2026-09-01",
-		})
 		e.recordFill(store.Tracker{
 			ClientOrderID: id, Symbol: "AAPL", Action: "entry",
-			Quantity: 1.0, DateKey: "2026-09-01", Broker: "robinhood",
+			Quantity: 1.0, DateKey: "2026-09-01", Broker: "robinhood", QuotePrice: 8.2,
 		}, map[string]any{"status": "filled", "filled_qty": 1.0, "avg_price": 9.0}, "filled")
 		body := telegramBody(t, e)
 		if !strings.Contains(body, "Robinhood: проскальзывание") {
@@ -107,10 +87,6 @@ func assertEntryPriceSQLNull(t *testing.T, e *Engine, table, id string) {
 func TestUnconfirmedFillPriceIsNullNotZero(t *testing.T) {
 	_, e, _ := testEngine(t, nil)
 	id := "oid-noprice-null"
-	seedOrderMeta(e, id, orderMeta{
-		Action: "entry", Symbol: "AAPL", Quantity: 2,
-		QuotePrice: 8.2, DateKey: "2026-09-01", Broker: "robinhood",
-	})
 	e.recordFill(store.Tracker{
 		ClientOrderID: id, Symbol: "AAPL", Action: "entry",
 		Quantity: 2.0, DateKey: "2026-09-01", Broker: "robinhood",
@@ -145,10 +121,6 @@ func TestJournalSQLUpdateErrorBlocksEntry(t *testing.T) {
 		t.Fatalf("inject update failure: %v", err)
 	}
 	id := "oid-sqlfail"
-	seedOrderMeta(e, id, orderMeta{
-		Action: "entry", Symbol: "MSFT", Quantity: 1,
-		Broker: "webull", DateKey: "2026-09-01",
-	})
 	e.recordFill(store.Tracker{
 		ClientOrderID: id, Symbol: "MSFT", Action: "entry",
 		Quantity: 1.0, DateKey: "2026-09-01", Broker: "webull",

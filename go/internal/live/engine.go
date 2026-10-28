@@ -108,7 +108,6 @@ type Engine struct {
 	wheelWG            sync.WaitGroup
 	stopWheels         bool
 	inFlight           map[string]bool
-	orderMeta          map[string]orderMeta
 	closeNotices       map[string]string
 	holdNotices        bool
 	heldNotices        [][2]string
@@ -125,6 +124,8 @@ type quoteCacheEntry struct {
 	at       time.Time
 }
 
+// orderMeta is what an order is sent with. It is written into its tracker, so
+// the fill reads it back from there even after a restart.
 type orderMeta struct {
 	CorrelationID string
 	IBS           float64
@@ -135,6 +136,17 @@ type orderMeta struct {
 	Quantity      float64
 	Source        string
 	Broker        string
+}
+
+// decisionIBS is the IBS the order was decided on, nil for an order that is
+// not a strategy decision. A strategy order always carries a correlation id,
+// so its IBS is a real reading even at exactly 0.
+func (m orderMeta) decisionIBS() *float64 {
+	if m.IBS > 0 || m.CorrelationID != "" {
+		v := m.IBS
+		return &v
+	}
+	return nil
 }
 
 func New(db *store.DB, quotes QuoteSource) *Engine {

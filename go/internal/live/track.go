@@ -678,9 +678,6 @@ func (e *Engine) finalizeTrackerAsIs(t store.Tracker, detail map[string]any, sta
 	if result != "" {
 		_ = e.Send(e.chat(), result)
 	}
-	e.mu.Lock()
-	delete(e.orderMeta, id)
-	e.mu.Unlock()
 	return true
 }
 
@@ -766,33 +763,15 @@ func (e *Engine) findOrderSnapshotOn(br Broker, clientOrderID string) map[string
 	return nil
 }
 
+// metaCorr is the correlation id the order was sent with, from its tracker.
 func (e *Engine) metaCorr(clientOrderID string) string {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.orderMeta == nil {
+	if e.DB == nil {
 		return ""
 	}
-	return e.orderMeta[clientOrderID].CorrelationID
-}
-
-const maxOrderMeta = 256
-
-func (e *Engine) rememberOrder(clientOrderID string, meta orderMeta) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.orderMeta == nil {
-		e.orderMeta = map[string]orderMeta{}
+	if t := e.DB.GetOrderTracker(clientOrderID); t != nil {
+		return t.CorrelationID
 	}
-	e.orderMeta[clientOrderID] = meta
-	for k := range e.orderMeta {
-		if len(e.orderMeta) <= maxOrderMeta {
-			return
-		}
-		if k == clientOrderID {
-			continue
-		}
-		delete(e.orderMeta, k)
-	}
+	return ""
 }
 
 func firstNonEmpty(vals ...any) any {

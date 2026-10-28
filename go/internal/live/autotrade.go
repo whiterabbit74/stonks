@@ -680,6 +680,7 @@ func (e *Engine) recordOrderIntent(clientOrderID, symbol, side string, qty float
 		ClientOrderID: clientOrderID, Symbol: symbol, Action: action,
 		Status: "submitting", Quantity: qty, Source: meta.Source,
 		DateKey: dateKey, Broker: broker,
+		CorrelationID: meta.CorrelationID, DecisionIBS: meta.decisionIBS(), QuotePrice: meta.QuotePrice,
 		StartedAt: e.now().UTC().Format(time.RFC3339Nano),
 	}
 	// SQLite здесь однопоточная и занятая запись — обычное дело; отказ от
@@ -813,6 +814,7 @@ func (e *Engine) startTracking(res OrderResult, meta orderMeta) {
 	if err := e.DB.SaveOrderTracker(store.Tracker{
 		ClientOrderID: res.ClientOrderID, Symbol: meta.Symbol, Action: meta.Action,
 		Status: "submitted", Quantity: meta.Quantity, Source: meta.Source, DateKey: meta.DateKey,
+		CorrelationID: meta.CorrelationID, DecisionIBS: meta.decisionIBS(), QuotePrice: meta.QuotePrice,
 		Broker: broker, StartedAt: e.now().UTC().Format(time.RFC3339Nano),
 	}); err != nil {
 		e.logAuto("tracker_persist_failed", meta.CorrelationID, map[string]any{
@@ -830,7 +832,6 @@ func (e *Engine) startTracking(res OrderResult, meta orderMeta) {
 		_ = e.persistTrackerBlock(broker)
 		return
 	}
-	e.rememberOrder(res.ClientOrderID, meta)
 	e.TrackSubmitted(res.ClientOrderID)
 }
 

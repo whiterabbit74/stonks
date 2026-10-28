@@ -59,19 +59,13 @@ func (e *Engine) recordFill(t store.Tracker, detail map[string]any, status strin
 		dateKey = tradingdate.TodayNYSE(e.now())
 	}
 
-	e.mu.Lock()
-	meta := e.orderMeta[clientOrderID]
-	e.mu.Unlock()
-	brokerName := fillBrokerName(t, meta)
+	brokerName := fillBrokerName(t)
 
 	fillPrice := fillPriceFrom(detail)
 	// reportedQty is what the broker says actually executed. Keep it separate
 	// from the fallbacks below: it is the only evidence of a partial fill.
 	reportedQty := fillQtyFrom(detail)
 	orderedQty := t.Quantity
-	if !(orderedQty > 0) {
-		orderedQty = meta.Quantity
-	}
 	fillQty := reportedQty
 	unconfirmedPrice := false
 	if !(fillPrice > 0) {
@@ -80,11 +74,7 @@ func (e *Engine) recordFill(t store.Tracker, detail map[string]any, status strin
 	if !(fillQty > 0) {
 		fillQty = orderedQty
 	}
-	var exitIBS *float64
-	if meta.IBS > 0 || meta.IBS == 0 && meta.CorrelationID != "" {
-		ibs := meta.IBS
-		exitIBS = &ibs
-	}
+	exitIBS := t.DecisionIBS
 
 	recorded := map[string]any{
 		"symbol": symbol, "action": action, "status": status,
@@ -96,7 +86,7 @@ func (e *Engine) recordFill(t store.Tracker, detail map[string]any, status strin
 	} else {
 		recorded["price"] = fillPrice
 	}
-	e.logAuto("local_trade_recorded", meta.CorrelationID, recorded)
+	e.logAuto("local_trade_recorded", t.CorrelationID, recorded)
 
 	// The executed quantity is the fact; the status string is only the broker's
 	// vocabulary. Record the trade whenever shares actually changed hands, even
@@ -110,7 +100,7 @@ func (e *Engine) recordFill(t store.Tracker, detail map[string]any, status strin
 	}
 	partial := reportedQty > 0 && orderedQty > 0 && reportedQty < orderedQty-1e-9
 	if partial {
-		e.logAuto("order_partially_filled", meta.CorrelationID, map[string]any{
+		e.logAuto("order_partially_filled", t.CorrelationID, map[string]any{
 			"symbol": symbol, "action": action, "clientOrderId": clientOrderID,
 			"status": status, "orderedQty": orderedQty, "filledQty": reportedQty,
 			"broker": brokerName,
@@ -119,28 +109,28 @@ func (e *Engine) recordFill(t store.Tracker, detail map[string]any, status strin
 			"<b>%s: частичное исполнение</b>\n%s • %s\nзаказано: %v\nисполнено: %v\nstatus: %s",
 			brokerLabel(brokerName), symbol, action, orderedQty, reportedQty, status))
 		if action == "exit" {
-			return e.reduceOpenQuantity(symbol, clientOrderID, brokerName, dateKey, reportedQty, fillPrice, exitIBS, meta.CorrelationID)
+			return e.reduceOpenQuantity(symbol, clientOrderID, brokerName, dateKey, reportedQty, fillPrice, exitIBS, t.CorrelationID)
 		}
 	} else if status != "filled" {
-		e.logAuto("order_filled_under_unknown_status", meta.CorrelationID, map[string]any{
+		e.logAuto("order_filled_under_unknown_status", t.CorrelationID, map[string]any{
 			"symbol": symbol, "action": action, "clientOrderId": clientOrderID,
 			"status": status, "filledQty": reportedQty,
 		})
 	}
 
 	if !unconfirmedPrice {
-		e.warnOnSlippage(symbol, action, clientOrderID, meta, fillPrice, brokerName)
+		e.warnOnSlippage(symbol, action, clientOrderID, t, fillPrice, brokerName)
 	} else {
-		e.logAuto("fill_price_unconfirmed", meta.CorrelationID, map[string]any{
+		e.logAuto("fill_price_unconfirmed", t.CorrelationID, map[string]any{
 			"symbol": symbol, "action": action, "clientOrderId": clientOrderID,
 		})
 	}
 
 	if action == "entry" {
-		return e.recordEntryFill(symbol, clientOrderID, brokerName, source, dateKey, fillQty, fillPrice, unconfirmedPrice, meta)
+		return e.recordEntryFill(symbol, clientOrderID, brokerName, source, dateKey, fillQty, fillPrice, unconfirmedPrice, t)
 	}
 	if action == "exit" {
-		return e.recordExitFill(symbol, clientOrderID, brokerName, dateKey, fillQty, fillPrice, exitIBS, meta)
+		return e.recordExitFill(symbol, clientOrderID, brokerName, dateKey, fillQty, fillPrice, exitIBS, t)
 	}
 	return true
 }
@@ -149,16 +139,11 @@ func (e *Engine) recordFill(t store.Tracker, detail map[string]any, status strin
 // creating it when this is the first broker in. Both brokers executing the same
 // signal used to produce two journal rows that a reconciliation pass then tried
 // to match back up; now the second broker just fills in its own leg.
-func (e *Engine) recordEntryFill(symbol, clientOrderID, brokerName, source, dateKey string, fillQty, fillPrice float64, unconfirmedPrice bool, meta orderMeta) bool {
+func (e *Engine) recordEntryFill(symbol, clientOrderID, brokerName, source, dateKey string, fillQty, fillPrice float64, unconfirmedPrice bool, t store.Tracker) bool {
 	f := store.EntryFill{
 		Symbol: symbol, Broker: brokerName, OrderID: clientOrderID, Qty: fillQty,
 		EntryDate: dateKey, Source: source, IsTest: isTestSource(source),
-	}
-	// Same rule as the exit side: a strategy order always carries a
-	// correlation id, so its IBS is a real reading even at exactly 0.
-	if meta.IBS > 0 || meta.CorrelationID != "" {
-		ibs := meta.IBS
-		f.IBS = &ibs
+		IBS: t.DecisionIBS,
 	}
 	if unconfirmedPrice {
 		// 0 is not a fill. Leave the price NULL and mark the row so the journal
@@ -171,7 +156,7 @@ func (e *Engine) recordEntryFill(symbol, clientOrderID, brokerName, source, date
 	// A read failure here is not "no position": inserting blind would either
 	// duplicate the row or raise a false persistence failure.
 	if _, err := e.DB.AttachEntry(f); err != nil {
-		e.logAuto("local_trade_record_failed", meta.CorrelationID, map[string]any{
+		e.logAuto("local_trade_record_failed", t.CorrelationID, map[string]any{
 			"error": err.Error(), "clientOrderId": clientOrderID,
 		})
 		e.raiseTrackerPersistBlock(brokerName)
@@ -193,17 +178,17 @@ func (e *Engine) exitRowFor(symbol, broker, dateKey string) (*store.Position, er
 // recordExitFill writes this broker's sell into its leg. A test row also
 // closes once no broker holds it; a monitoring position is closed by its own
 // signal and only gets the leg (invariant K.1–K.2).
-func (e *Engine) recordExitFill(symbol, clientOrderID, brokerName, dateKey string, fillQty, fillPrice float64, exitIBS *float64, meta orderMeta) bool {
+func (e *Engine) recordExitFill(symbol, clientOrderID, brokerName, dateKey string, fillQty, fillPrice float64, exitIBS *float64, t store.Tracker) bool {
 	p, err := e.exitRowFor(symbol, brokerName, dateKey)
 	if err != nil {
-		e.logAuto("local_trade_close_failed", meta.CorrelationID, map[string]any{
+		e.logAuto("local_trade_close_failed", t.CorrelationID, map[string]any{
 			"symbol": symbol, "clientOrderId": clientOrderID, "error": err.Error(),
 		})
 		e.raiseTrackerPersistBlock(brokerName)
 		return false
 	}
 	if p == nil {
-		e.leftoverSold(symbol, clientOrderID, brokerName, fillQty, fillPrice, meta.CorrelationID)
+		e.leftoverSold(symbol, clientOrderID, brokerName, fillQty, fillPrice, t.CorrelationID)
 		return true
 	}
 
@@ -211,24 +196,24 @@ func (e *Engine) recordExitFill(symbol, clientOrderID, brokerName, dateKey strin
 		Date: dateKey, Price: fillPrice, IBS: exitIBS, Notes: "closed_from_broker_fill",
 	})
 	if err != nil {
-		e.logAuto("local_trade_close_failed", meta.CorrelationID, map[string]any{
+		e.logAuto("local_trade_close_failed", t.CorrelationID, map[string]any{
 			"symbol": symbol, "clientOrderId": clientOrderID, "op": "close_leg", "error": err.Error(),
 		})
 		e.raiseTrackerPersistBlock(brokerName)
 		return false
 	}
 	if !booked {
-		e.logAuto("exit_fill_already_recorded", meta.CorrelationID, map[string]any{
+		e.logAuto("exit_fill_already_recorded", t.CorrelationID, map[string]any{
 			"symbol": symbol, "clientOrderId": clientOrderID, "broker": brokerName,
 		})
 		return true
 	}
 	if !after.IsTest {
-		e.logAuto("position_leg_exited", meta.CorrelationID, map[string]any{
+		e.logAuto("position_leg_exited", t.CorrelationID, map[string]any{
 			"symbol": symbol, "broker": brokerName, "positionId": after.ID, "price": fillPrice,
 		})
 	} else if after.Status == "open" {
-		e.logAuto("position_partially_exited", meta.CorrelationID, map[string]any{
+		e.logAuto("position_partially_exited", t.CorrelationID, map[string]any{
 			"symbol": symbol, "broker": brokerName, "remaining": after.ExecutedQty(),
 		})
 	}
@@ -331,31 +316,28 @@ func (e *Engine) leftoverSold(symbol, clientOrderID, brokerName string, fillQty,
 // orders and the fill must be certain — so the setting is a reporting
 // threshold: it tells the operator when a fill landed further from the
 // decision price than they consider normal.
-func (e *Engine) warnOnSlippage(symbol, action, clientOrderID string, meta orderMeta, fillPrice float64, broker string) {
+func (e *Engine) warnOnSlippage(symbol, action, clientOrderID string, t store.Tracker, fillPrice float64, broker string) {
 	bps := asFloat(e.AutoConfig()["maxSlippageBps"])
-	if !(bps > 0) || !(fillPrice > 0) || !(meta.QuotePrice > 0) {
+	if !(bps > 0) || !(fillPrice > 0) || !(t.QuotePrice > 0) {
 		return
 	}
-	dev := (fillPrice - meta.QuotePrice) / meta.QuotePrice
+	dev := (fillPrice - t.QuotePrice) / t.QuotePrice
 	devBps := math.Abs(dev) * 10000
 	if devBps <= bps {
 		return
 	}
-	e.logAuto("order_slippage_exceeded", meta.CorrelationID, map[string]any{
+	e.logAuto("order_slippage_exceeded", t.CorrelationID, map[string]any{
 		"symbol": symbol, "action": action, "clientOrderId": clientOrderID,
-		"quotePrice": meta.QuotePrice, "fillPrice": fillPrice,
+		"quotePrice": t.QuotePrice, "fillPrice": fillPrice,
 		"slippageBps": devBps, "limitBps": bps, "broker": broker,
 	})
 	_ = e.Send(e.chat(), fmt.Sprintf(
 		"<b>%s: проскальзывание %.0f bps</b>\n%s • %s\nрешение: $%.2f\nисполнено: $%.2f\nпорог: %.0f bps",
-		brokerLabel(broker), devBps, symbol, action, meta.QuotePrice, fillPrice, bps))
+		brokerLabel(broker), devBps, symbol, action, t.QuotePrice, fillPrice, bps))
 }
 
-func fillBrokerName(t store.Tracker, meta orderMeta) string {
-	name := strings.ToLower(strings.TrimSpace(meta.Broker))
-	if name == "" {
-		name = strings.ToLower(strings.TrimSpace(t.Broker))
-	}
+func fillBrokerName(t store.Tracker) string {
+	name := strings.ToLower(strings.TrimSpace(t.Broker))
 	if name == "" {
 		return "webull"
 	}

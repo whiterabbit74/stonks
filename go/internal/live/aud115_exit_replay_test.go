@@ -24,7 +24,7 @@ func TestExitFillReplayLeavesReentryAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e.recordExitFill("AAPL", "x-exit", "webull", "2026-09-01", 4, 11, nil, orderMeta{})
+	e.recordExitFill("AAPL", "x-exit", "webull", "2026-09-01", 4, 11, nil, store.Tracker{})
 	p1, err := db.GetPosition("p1")
 	if err != nil || p1 == nil || p1.Status != "closed" {
 		t.Fatalf("p1 = %+v, %v; want closed", p1, err)
@@ -37,7 +37,7 @@ func TestExitFillReplayLeavesReentryAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e.recordExitFill("AAPL", "x-exit", "webull", "2026-09-01", 4, 11, nil, orderMeta{})
+	e.recordExitFill("AAPL", "x-exit", "webull", "2026-09-01", 4, 11, nil, store.Tracker{})
 	p2, err := db.OpenPositionBySymbol("AAPL")
 	if err != nil {
 		t.Fatal(err)
