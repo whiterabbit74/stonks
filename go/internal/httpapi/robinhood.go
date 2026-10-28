@@ -107,7 +107,7 @@ func (s *Server) handleRobinhoodDashboard(w http.ResponseWriter, r *http.Request
 	acct, aerr := br.Account(r.Context())
 	pos, perr := br.Positions(r.Context())
 	if pos == nil {
-		pos = []any{}
+		pos = []live.BrokerPosition{}
 	}
 	today := tradingdate.TodayNYSE(time.Now())
 	open, oerr := br.OpenOrders(r.Context())

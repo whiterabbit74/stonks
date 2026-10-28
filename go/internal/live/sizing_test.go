@@ -170,7 +170,7 @@ func TestEffectiveReservePctFormula(t *testing.T) {
 // close the journal on a position that is still partly open.
 func TestPositionQuantityIsExact(t *testing.T) {
 	pos := []any{map[string]any{"symbol": "AAPL", "quantity": 7.5}}
-	if got := PositionQuantity(pos, "aapl"); got != 7.5 {
+	if got := PositionQuantity(positionsFromRows(pos), "aapl"); got != 7.5 {
 		t.Fatalf("got %v", got)
 	}
 }

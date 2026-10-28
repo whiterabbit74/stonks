@@ -23,7 +23,7 @@ func TestSizingVariantCResidualWhenCashZero(t *testing.T) {
 		"currency": "USD", "cash_balance": 0.0, "day_buying_power": 8000.0, "net_liquidation_value": 10000.0,
 	}}}}
 	pos := []any{map[string]any{"symbol": "MSFT", "quantity": 10.0, "market_value": 4000.0}}
-	funds, _, base, err := resolveEntryBalanceSizing(payload, ParseTradingConfig(map[string]any{"entryCapitalMode": "cash_100"}), pos, nil)
+	funds, _, base, err := resolveEntryBalanceSizing(payload, ParseTradingConfig(map[string]any{"entryCapitalMode": "cash_100"}), positionsFromRows(pos), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestSizingVariantCRefusesBuyingPowerFallback(t *testing.T) {
 		"currency": "USD", "cash_balance": 0.0, "day_buying_power": 8000.0, "net_liquidation_value": 10000.0,
 	}}}}
 	pos := []any{map[string]any{"symbol": "MSFT", "quantity": 10.0, "market_value": 10000.0}}
-	if _, _, _, err := resolveEntryBalanceSizing(payload, ParseTradingConfig(map[string]any{"entryCapitalMode": "cash_100"}), pos, nil); err == nil {
+	if _, _, _, err := resolveEntryBalanceSizing(payload, ParseTradingConfig(map[string]any{"entryCapitalMode": "cash_100"}), positionsFromRows(pos), nil); err == nil {
 		t.Fatal("buying-power fallback must be gone")
 	}
 }

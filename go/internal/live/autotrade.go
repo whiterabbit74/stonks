@@ -455,25 +455,16 @@ func (e *Engine) heldSymbolsOn(br Broker, w execWindow) (map[string]float64, err
 	if br == nil {
 		return map[string]float64{}, nil
 	}
-	pos, err := retryBrokerReadWindow(e, w, "positions", func(ctx context.Context) ([]any, error) {
+	pos, err := retryBrokerReadWindow(e, w, "positions", func(ctx context.Context) ([]BrokerPosition, error) {
 		return br.Positions(ctx)
 	})
 	if err != nil {
 		return nil, err
 	}
 	held := map[string]float64{}
-	for _, row := range pos {
-		m := mapOf(row)
-		if m == nil {
-			continue
-		}
-		sym := store.SafeTicker(firstString(m, "symbol", "ticker", "display_symbol"))
-		if sym == "" {
-			continue
-		}
-		q := firstPositive(m["quantity"], m["qty"], m["position"], m["holding"], m["total_qty"], m["totalQuantity"])
-		if q > 0 {
-			held[sym] = q
+	for _, p := range pos {
+		if p.Symbol != "" && p.Qty > 0 {
+			held[p.Symbol] = p.Qty
 		}
 	}
 	return held, nil
@@ -1125,7 +1116,7 @@ func (e *Engine) Account() (map[string]any, error) {
 	}
 	pos, perr := e.Broker.Positions(context.Background())
 	if pos == nil {
-		pos = []any{}
+		pos = []BrokerPosition{}
 	}
 	out := map[string]any{"connection": e.WebullSummary(), "account": snap, "positions": pos}
 	if perr != nil {
@@ -1355,7 +1346,7 @@ func (e *Engine) ClosePosition(brokerName, symbol string) (OrderResult, error) {
 	if br == nil {
 		return OrderResult{Error: "Не заданы ключи Webull"}, fmt.Errorf("Не заданы ключи Webull")
 	}
-	pos, err := retryBrokerReadWindow(e, backgroundWindow(), "positions", func(ctx context.Context) ([]any, error) {
+	pos, err := retryBrokerReadWindow(e, backgroundWindow(), "positions", func(ctx context.Context) ([]BrokerPosition, error) {
 		return br.Positions(ctx)
 	})
 	if err != nil {

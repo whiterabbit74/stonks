@@ -13,7 +13,7 @@ type hangPositionsBroker struct {
 	MemoryBroker
 }
 
-func (h *hangPositionsBroker) Positions(ctx context.Context) ([]any, error) {
+func (h *hangPositionsBroker) Positions(ctx context.Context) ([]BrokerPosition, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }

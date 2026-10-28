@@ -260,7 +260,7 @@ func (m *MemoryBroker) CloseMarket(ctx context.Context, symbol string) (OrderRes
 	m.mu.Lock()
 	pos := m.Pos
 	m.mu.Unlock()
-	qty := PositionQuantity(pos, symbol)
+	qty := PositionQuantity(positionsFromRows(pos), symbol)
 	if !(qty > 0) {
 		err := fmt.Errorf("No broker position found for %s", symbol)
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
@@ -283,7 +283,7 @@ func (m *MemoryBroker) Account(ctx context.Context) (map[string]any, error) {
 	}, nil
 }
 
-func (m *MemoryBroker) Positions(ctx context.Context) ([]any, error) {
+func (m *MemoryBroker) Positions(ctx context.Context) ([]BrokerPosition, error) {
 	m.mu.Lock()
 	m.PosCalls++
 	if m.FailPositions != nil {
@@ -301,12 +301,9 @@ func (m *MemoryBroker) Positions(ctx context.Context) ([]any, error) {
 	pos := m.Pos
 	m.mu.Unlock()
 	if on != nil {
-		return on(), nil
+		return positionsFromRows(on()), nil
 	}
-	if pos != nil {
-		return pos, nil
-	}
-	return []any{}, nil
+	return positionsFromRows(pos), nil
 }
 
 func (m *MemoryBroker) CreateToken() (map[string]any, error) {

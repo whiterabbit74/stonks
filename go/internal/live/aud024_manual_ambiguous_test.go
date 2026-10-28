@@ -24,8 +24,8 @@ func (b *ambiguousBroker) CloseMarket(context.Context, string) (OrderResult, err
 func (b *ambiguousBroker) Account(ctx context.Context) (map[string]any, error) {
 	return map[string]any{}, nil
 }
-func (b *ambiguousBroker) Positions(ctx context.Context) ([]any, error) {
-	return []any{map[string]any{"symbol": "AAPL", "quantity": 3.0}}, nil
+func (b *ambiguousBroker) Positions(ctx context.Context) ([]BrokerPosition, error) {
+	return positionsFromRows([]any{map[string]any{"symbol": "AAPL", "quantity": 3.0}}), nil
 }
 func (b *ambiguousBroker) OpenOrders(ctx context.Context) ([]BrokerOrder, error) { return nil, nil }
 func (b *ambiguousBroker) OrderHistory(context.Context, string, string) ([]BrokerOrder, error) {

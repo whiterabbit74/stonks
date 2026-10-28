@@ -249,7 +249,7 @@ func money(v any) float64 {
 	return asFloat(v)
 }
 
-func (b *RobinhoodBroker) Positions(ctx context.Context) ([]any, error) {
+func (b *RobinhoodBroker) Positions(ctx context.Context) ([]BrokerPosition, error) {
 	acct, err := b.agenticAccountCtx(ctx)
 	if err != nil {
 		return nil, err
@@ -267,7 +267,7 @@ func (b *RobinhoodBroker) Positions(ctx context.Context) ([]any, error) {
 	}
 	var out []any
 	collectPositions(root, &out)
-	return out, nil
+	return positionsFromRows(out), nil
 }
 
 // rememberOrderID stores the order id Robinhood assigned to our ref_id, taken

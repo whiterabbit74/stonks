@@ -73,6 +73,19 @@ type BrokerOrder struct {
 
 func (o BrokerOrder) MarshalJSON() ([]byte, error) { return json.Marshal(o.Raw) }
 
+// BrokerPosition is one holding in a broker's book as the engine reads it.
+// Raw keeps the broker's row for the dashboards.
+type BrokerPosition struct {
+	Symbol string
+	// Qty is the quantity held, 0 when the row reports none.
+	Qty float64
+	// MarketValue is 0 when the broker did not report it.
+	MarketValue float64
+	Raw         any
+}
+
+func (p BrokerPosition) MarshalJSON() ([]byte, error) { return json.Marshal(p.Raw) }
+
 // filledQty and filledPrice read an answer that may be missing as "nothing
 // reported".
 func (o *BrokerOrder) filledQty() float64 {
@@ -114,7 +127,7 @@ type Broker interface {
 	PlaceMarket(ctx context.Context, symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error)
 	CloseMarket(ctx context.Context, symbol string) (OrderResult, error)
 	Account(ctx context.Context) (map[string]any, error)
-	Positions(ctx context.Context) ([]any, error)
+	Positions(ctx context.Context) ([]BrokerPosition, error)
 	OrderDetail(ctx context.Context, clientOrderID string) (*BrokerOrder, error)
 	OpenOrders(ctx context.Context) ([]BrokerOrder, error)
 	OrderHistory(ctx context.Context, start, end string) ([]BrokerOrder, error)

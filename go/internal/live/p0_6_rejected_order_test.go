@@ -30,8 +30,8 @@ func (b *rejectingBroker) CloseMarket(context.Context, string) (OrderResult, err
 func (b *rejectingBroker) Account(ctx context.Context) (map[string]any, error) {
 	return map[string]any{}, nil
 }
-func (b *rejectingBroker) Positions(ctx context.Context) ([]any, error)          { return nil, nil }
-func (b *rejectingBroker) OpenOrders(ctx context.Context) ([]BrokerOrder, error) { return nil, nil }
+func (b *rejectingBroker) Positions(ctx context.Context) ([]BrokerPosition, error) { return nil, nil }
+func (b *rejectingBroker) OpenOrders(ctx context.Context) ([]BrokerOrder, error)   { return nil, nil }
 func (b *rejectingBroker) OrderHistory(context.Context, string, string) ([]BrokerOrder, error) {
 	return nil, nil
 }

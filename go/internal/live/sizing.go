@@ -224,33 +224,44 @@ func extractNetLiquidation(root map[string]any) float64 {
 	return firstPositive(cands...)
 }
 
-func positionMarketValue(m map[string]any) float64 {
-	return firstPositive(m["market_value"], m["marketValue"], m["market_val"], m["marketValueUsd"], m["last_value"])
-}
-
-func sumPositionMarketValues(positions []any) (sum float64, ok bool) {
-	ok = true
-	for _, row := range positions {
+// positionsFromRows reads a broker's holdings the forgiving way: the field
+// names of Webull, Robinhood and the test broker all count. Adapters call it at
+// their edge; rows that are not objects are dropped, as the engine always
+// skipped them.
+func positionsFromRows(rows []any) []BrokerPosition {
+	out := []BrokerPosition{}
+	for _, row := range rows {
 		m := mapOf(row)
 		if m == nil {
 			continue
 		}
-		qty := firstPositive(m["quantity"], m["qty"], m["position"], m["holding"], m["total_qty"], m["totalQuantity"])
-		if qty <= 0 {
+		out = append(out, BrokerPosition{
+			Symbol:      store.SafeTicker(firstString(m, "symbol", "ticker", "display_symbol")),
+			Qty:         firstPositive(m["quantity"], m["qty"], m["position"], m["holding"], m["total_qty"], m["totalQuantity"]),
+			MarketValue: firstPositive(m["market_value"], m["marketValue"], m["market_val"], m["marketValueUsd"], m["last_value"]),
+			Raw:         row,
+		})
+	}
+	return out
+}
+
+func sumPositionMarketValues(positions []BrokerPosition) (sum float64, ok bool) {
+	ok = true
+	for _, p := range positions {
+		if p.Qty <= 0 {
 			continue
 		}
-		v := positionMarketValue(m)
-		if v <= 0 {
+		if p.MarketValue <= 0 {
 			return 0, false
 		}
-		sum += v
+		sum += p.MarketValue
 	}
 	return sum, true
 }
 
 var errBuyingPowerNotABase = fmt.Errorf("no residual cash for entry (buying power is not a sizing base)")
 
-func resolveEntryBalanceSizing(balancePayload any, cfg TradingConfig, positions []any, posErr error) (entryFunds, buyingPower, baseCapital float64, err error) {
+func resolveEntryBalanceSizing(balancePayload any, cfg TradingConfig, positions []BrokerPosition, posErr error) (entryFunds, buyingPower, baseCapital float64, err error) {
 	root := unwrapBalance(balancePayload)
 	buyingPower = extractEntryFundsFromBalance(root)
 	cash := extractCashBalance(root)
@@ -310,22 +321,12 @@ func ComputeOrderQuantity(currentPrice float64, cfg TradingConfig, availableFund
 // as reported. An exit sells this whole number: entries are whole shares, but a
 // split can still leave a fraction, and flooring it here would sell 7 of 7.5
 // and call the position closed with the rest still open.
-func PositionQuantity(positions []any, symbol string) float64 {
+func PositionQuantity(positions []BrokerPosition, symbol string) float64 {
 	want := store.SafeTicker(symbol)
-	for _, row := range positions {
-		m := mapOf(row)
-		if m == nil {
-			continue
+	for _, p := range positions {
+		if p.Symbol == want {
+			return p.Qty
 		}
-		cand := store.SafeTicker(firstString(m, "symbol", "ticker", "display_symbol"))
-		if cand != want {
-			continue
-		}
-		q := firstPositive(m["quantity"], m["qty"], m["position"], m["holding"], m["total_qty"], m["totalQuantity"])
-		if q <= 0 {
-			return 0
-		}
-		return q
 	}
 	return 0
 }
@@ -356,7 +357,7 @@ func (e *Engine) sizeOrder(action, symbol string, cfg TradingConfig, price float
 		if br == nil {
 			return 0, fmt.Errorf("Не заданы ключи Webull")
 		}
-		pos, err := retryBrokerReadWindow(e, w, "positions", func(ctx context.Context) ([]any, error) {
+		pos, err := retryBrokerReadWindow(e, w, "positions", func(ctx context.Context) ([]BrokerPosition, error) {
 			return br.Positions(ctx)
 		})
 		if err != nil {
@@ -377,10 +378,10 @@ func (e *Engine) sizeOrder(action, symbol string, cfg TradingConfig, price float
 	if err != nil {
 		return 0, err
 	}
-	var pos []any
+	var pos []BrokerPosition
 	var posErr error
 	if extractCashBalance(unwrapBalance(acct)) <= 0 {
-		pos, posErr = retryBrokerReadWindow(e, w, "positions", func(ctx context.Context) ([]any, error) {
+		pos, posErr = retryBrokerReadWindow(e, w, "positions", func(ctx context.Context) ([]BrokerPosition, error) {
 			return br.Positions(ctx)
 		})
 	}

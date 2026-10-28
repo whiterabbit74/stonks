@@ -171,7 +171,7 @@ func (b *LiveBroker) Account(ctx context.Context) (map[string]any, error) {
 // Positions is bounded by the caller's context: the T-1 broker-book reconcile
 // (t1BrokerReconcile) shares the deadline of the order it precedes. See P1-1 in
 // AUTOTRADE_ROADMAP.md.
-func (b *LiveBroker) Positions(ctx context.Context) ([]any, error) {
+func (b *LiveBroker) Positions(ctx context.Context) ([]BrokerPosition, error) {
 	c := b.client()
 	resp, err := c.AccountPositionsCtx(ctx, c.AccountID)
 	if err != nil {
@@ -186,7 +186,7 @@ func (b *LiveBroker) Positions(ctx context.Context) ([]any, error) {
 	if rows == nil {
 		return nil, fmt.Errorf("unreadable positions response from Webull")
 	}
-	return rows, nil
+	return positionsFromRows(rows), nil
 }
 
 func (b *LiveBroker) CreateToken() (map[string]any, error) {

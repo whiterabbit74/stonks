@@ -16,7 +16,7 @@ type blockingBroker struct {
 	calls chan struct{}
 }
 
-func (b *blockingBroker) Positions(ctx context.Context) ([]any, error) {
+func (b *blockingBroker) Positions(ctx context.Context) ([]BrokerPosition, error) {
 	select {
 	case b.calls <- struct{}{}:
 	default:
