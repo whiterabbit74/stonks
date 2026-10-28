@@ -249,6 +249,8 @@ type EvalResult struct {
 	Runs            map[string]*BrokerRun     `json:"runs,omitempty"`
 	Broker          any                       `json:"broker,omitempty"`
 	BrokerDecisions map[string]map[string]any `json:"brokerDecisions,omitempty"`
+	// evals are the readings Quotes were made from, for the T-1 report.
+	evals map[string]watchEval
 }
 
 func (e *Engine) Evaluate() EvalResult {
@@ -304,12 +306,14 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 	}
 	e.prefetchQuotes(quoteSymbols, providerChain, w)
 	var quotes []LiveQuote
+	evals := map[string]watchEval{}
 	for _, sym := range quoteSymbols {
 		w := watchBy[sym]
 		if w == nil {
 			w = map[string]any{"symbol": sym}
 		}
 		ev := e.evalWatch(sym, w, cfg, providerChain)
+		evals[sym] = ev
 		low, high := watchThresholds(w, cfg)
 		quotes = append(quotes, LiveQuote{
 			Symbol:       sym,
@@ -328,6 +332,7 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 		OpenTrade:   open,
 		Decision:    decideMonitor(quotes, symbols, held),
 		Live:        e.evalLive(cfg),
+		evals:       evals,
 	}
 }
 

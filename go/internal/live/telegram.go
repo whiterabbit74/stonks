@@ -196,37 +196,33 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 	}
 	cfg := ParseTradingConfig(e.AutoConfig())
 	providerChain := quoteProviderChain(cfg)
-	var watchSyms []string
-	for _, w := range watches {
-		watchSyms = append(watchSyms, fmt.Sprint(w["symbol"]))
-	}
-	e.prefetchQuotes(watchSyms, providerChain, backgroundWindow())
-	emaAlerts, err := e.EvaluateEMAAlerts()
-	if err != nil {
-		out.Reason = "journal_unavailable"
-		return out, err
-	}
-	if len(watches) == 0 && len(emaAlerts) == 0 && open == nil {
-		out.Reason = "no_watches"
-		return out, nil
-	}
-	var rows []t1Watch
-	var integ []IntegrityResult
-	for _, w := range watches {
-		sym := fmt.Sprint(w["symbol"])
-		ev := e.evalWatch(sym, w, cfg, providerChain)
-		rows = append(rows, t1Watch{sym: sym, eval: ev})
-		out.Tickers = append(out.Tickers, sym)
-		if ev.blocked {
-			integ = append(integ, ev.warning)
-		}
-	}
-	for _, a := range emaAlerts {
-		if a.Warning.BlockSignals {
-			integ = append(integ, a.Warning)
-		}
-	}
 	if stage != "confirmations" {
+		var watchSyms []string
+		for _, w := range watches {
+			watchSyms = append(watchSyms, fmt.Sprint(w["symbol"]))
+		}
+		e.prefetchQuotes(watchSyms, providerChain, backgroundWindow())
+		emaAlerts, err := e.EvaluateEMAAlerts()
+		if err != nil {
+			out.Reason = "journal_unavailable"
+			return out, err
+		}
+		if len(watches) == 0 && len(emaAlerts) == 0 && open == nil {
+			out.Reason = "no_watches"
+			return out, nil
+		}
+		var rows []t1Watch
+		var integ []IntegrityResult
+		for _, w := range watches {
+			sym := fmt.Sprint(w["symbol"])
+			ev := e.evalWatch(sym, w, cfg, providerChain)
+			rows = append(rows, t1Watch{sym: sym, eval: ev})
+			out.Tickers = append(out.Tickers, sym)
+			if ev.blocked {
+				integ = append(integ, ev.warning)
+			}
+		}
+		integ = append(integ, emaIntegrity(emaAlerts)...)
 		text := e.buildT11Text(minutesUntilClose, today, providersUsed(rows, providerChain), rows, emaAlerts, integ)
 		res, err := e.finishSend(&out, text, opts)
 		if res.Sent {
@@ -285,6 +281,7 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 			if opts.DryRun || !autotradeOn(ev.AutoTrading) || !ev.Monitor.acted() {
 				return
 			}
+			rows, integ := t1Rows(watches, ev)
 			text := e.buildT1MonitorText(minutesUntilClose, rows, ev, integ, false)
 			earlyDone = make(chan struct{})
 			go func() {
@@ -305,15 +302,30 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		}
 	}
 
+	// The report states the readings the cycle decided on (AUD-205), and the
+	// EMA alerts, which place no orders, are read only once the cycle is done:
+	// before it they would eat the closing minute (AUD-147).
+	rows, integ := t1Rows(watches, cycle)
+	for _, r := range rows {
+		out.Tickers = append(out.Tickers, r.sym)
+	}
+	emaAlerts, emaErr := e.EvaluateEMAAlerts()
+	if emaErr != nil {
+		e.logAuto("ema_alerts_unavailable", "", map[string]any{"error": emaErr.Error()})
+	}
+	emaInteg := emaIntegrity(emaAlerts)
 	auto := t1AutoText(cycle, opts.DryRun)
 	var res SimulateResult
 	if early == "" {
-		text := e.buildT1MonitorText(minutesUntilClose, rows, cycle, integ, opts.DryRun)
+		text := e.buildT1MonitorText(minutesUntilClose, rows, cycle, append(integ, emaInteg...), opts.DryRun)
 		if auto != "" {
 			text += "\n\n" + auto
 		}
 		res, err = e.finishSend(&out, text, opts)
 	} else {
+		if block := FormatIntegrityWarningBlock(emaInteg); block != "" {
+			auto = strings.TrimSpace(block + "\n\n" + auto)
+		}
 		res, err = e.finishSend(&out, auto, opts)
 		res.Text = early + "\n\n" + auto
 	}
@@ -364,6 +376,29 @@ func (e *Engine) finishSend(out *SimulateResult, text string, opts AggregateOpts
 type t1Watch struct {
 	sym  string
 	eval watchEval
+}
+
+// t1Rows are the report's watch rows, taken from the readings ev was decided
+// on rather than read again.
+func t1Rows(watches []map[string]any, ev EvalResult) (rows []t1Watch, integ []IntegrityResult) {
+	for _, w := range watches {
+		sym := fmt.Sprint(w["symbol"])
+		we := ev.evals[store.SafeTicker(sym)]
+		rows = append(rows, t1Watch{sym: sym, eval: we})
+		if we.blocked {
+			integ = append(integ, we.warning)
+		}
+	}
+	return rows, integ
+}
+
+func emaIntegrity(alerts []EmaEval) (out []IntegrityResult) {
+	for _, a := range alerts {
+		if a.Warning.BlockSignals {
+			out = append(out, a.Warning)
+		}
+	}
+	return out
 }
 
 // buildT1MonitorText is the monitoring's half of the T-1 report: its decision,
