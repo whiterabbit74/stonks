@@ -404,7 +404,7 @@ func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.6, Volume: 1}}
 	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
 	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
-	watch := map[string]any{"symbol": "AAPL"}
+	var watch *store.Watch // a held ticker off the watchlist
 	cfg := ParseTradingConfig(map[string]any{"lowIBS": 0.20, "highIBS": 0.80})
 
 	low, high := watchThresholds(watch, cfg)
@@ -446,7 +446,7 @@ func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
 	if ev0.low != low0 {
 		t.Fatalf("evalWatch low %v watchThresholds %v", ev0.low, low0)
 	}
-	watch0 := map[string]any{"symbol": "AAPL", "lowIBS": 0.0}
+	watch0 := &store.Watch{Symbol: "AAPL", LowIBS: 0, HighIBS: 0.80}
 	lowW, _ := watchThresholds(watch0, cfg)
 	if lowW != 0 {
 		t.Fatalf("watch lowIBS 0 must stay 0, got %v", lowW)
@@ -618,7 +618,7 @@ func TestQuoteRangeMissingIsNotOk(t *testing.T) {
 		Q:    map[string]providers.QuotePayload{"AAPL": {Quote: map[string]any{"current": 8.2}}},
 	}
 	e := New(db, q)
-	ev := e.evalWatch("AAPL", map[string]any{"symbol": "AAPL"}, TradingConfig{}, []string{"finnhub"})
+	ev := e.evalWatch("AAPL", nil, TradingConfig{}, []string{"finnhub"})
 	if ev.ok {
 		t.Fatalf("missing range must not be ok %+v", ev)
 	}
@@ -978,19 +978,16 @@ func TestEvaluateReadsNoBrokerAndEntryReadsOnce(t *testing.T) {
 	}
 }
 
-// A threshold asFloat cannot read converts to 0, and 0 is a threshold in range:
-// a highIBS of 0 makes every reading an exit and a lowIBS of 0 silently stops
-// every entry. The pair is resolved as a pair, so a corrupt half sends both
-// values back to the documented defaults.
+// A highIBS of 0 makes every reading an exit. The pair is resolved as a pair,
+// so a stored row with an invalid half sends both values back to the
+// documented defaults.
 func TestWatchThresholdsRejectUnreadableHighIBS(t *testing.T) {
 	cfg := ParseTradingConfig(map[string]any{"lowIBS": 0.20, "highIBS": 0.80})
-	for _, corrupt := range []any{true, "не число", map[string]any{}} {
-		low, high := watchThresholds(map[string]any{"symbol": "AAPL", "highIBS": corrupt}, cfg)
-		if low != ibs.DefaultLowIBS || high != ibs.DefaultHighIBS {
-			t.Fatalf("highIBS %v: got %v/%v want defaults %v/%v", corrupt, low, high, ibs.DefaultLowIBS, ibs.DefaultHighIBS)
-		}
+	low, high := watchThresholds(&store.Watch{Symbol: "AAPL", LowIBS: 0.1, HighIBS: 0}, cfg)
+	if low != ibs.DefaultLowIBS || high != ibs.DefaultHighIBS {
+		t.Fatalf("highIBS 0: got %v/%v want defaults %v/%v", low, high, ibs.DefaultLowIBS, ibs.DefaultHighIBS)
 	}
-	low, high := watchThresholds(nil, ParseTradingConfig(map[string]any{"lowIBS": 0.20, "highIBS": "не число"}))
+	low, high = watchThresholds(nil, ParseTradingConfig(map[string]any{"lowIBS": 0.20, "highIBS": "не число"}))
 	if low != ibs.DefaultLowIBS || high != ibs.DefaultHighIBS {
 		t.Fatalf("cfg highIBS unreadable: got %v/%v", low, high)
 	}

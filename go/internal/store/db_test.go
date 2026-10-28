@@ -477,19 +477,19 @@ func TestSettingsRoundTripJSONDoesNotDropNestedDefaults(t *testing.T) {
 	}
 }
 
-func mustWatch(t *testing.T, db *DB, symbol string) map[string]any {
+func mustWatch(t *testing.T, db *DB, symbol string) Watch {
 	t.Helper()
 	list, err := db.ListWatches()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, w := range list {
-		if fmt.Sprint(w["symbol"]) == symbol {
+		if w.Symbol == symbol {
 			return w
 		}
 	}
 	t.Fatalf("watch %s not found", symbol)
-	return nil
+	return Watch{}
 }
 
 func seedWatch(t *testing.T, db *DB) {
@@ -511,14 +511,14 @@ func TestPatchWatchKeepsOtherThresholds(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := mustWatch(t, db, "AAPL")
-	if asFloat(got["lowIBS"]) != 0.12 {
-		t.Fatalf("lowIBS=%v want 0.12", got["lowIBS"])
+	if got.LowIBS != 0.12 {
+		t.Fatalf("lowIBS=%v want 0.12", got.LowIBS)
 	}
-	if asFloat(got["highIBS"]) != 0.8 {
-		t.Fatalf("highIBS=%v want 0.8", got["highIBS"])
+	if got.HighIBS != 0.8 {
+		t.Fatalf("highIBS=%v want 0.8", got.HighIBS)
 	}
-	if asFloat(got["thresholdPct"]) != 0.4 {
-		t.Fatalf("thresholdPct=%v want 0.4", got["thresholdPct"])
+	if got.ThresholdPct != 0.4 {
+		t.Fatalf("thresholdPct=%v want 0.4", got.ThresholdPct)
 	}
 }
 
@@ -529,11 +529,11 @@ func TestUpsertWatchKeepsOtherThresholds(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := mustWatch(t, db, "AAPL")
-	if asFloat(got["lowIBS"]) != 0.11 {
-		t.Fatalf("lowIBS=%v want 0.11", got["lowIBS"])
+	if got.LowIBS != 0.11 {
+		t.Fatalf("lowIBS=%v want 0.11", got.LowIBS)
 	}
-	if asFloat(got["highIBS"]) != 0.8 {
-		t.Fatalf("highIBS=%v want preserved 0.8", got["highIBS"])
+	if got.HighIBS != 0.8 {
+		t.Fatalf("highIBS=%v want preserved 0.8", got.HighIBS)
 	}
 }
 
@@ -552,7 +552,9 @@ func TestPatchWatchIgnoresPositionKeys(t *testing.T) {
 	if err := db.PatchWatch("AAPL", pos); err != nil {
 		t.Fatal(err)
 	}
-	got := mustWatch(t, db, "AAPL")
+	raw, _ := json.Marshal(mustWatch(t, db, "AAPL"))
+	var got map[string]any
+	_ = json.Unmarshal(raw, &got)
 	for _, k := range []string{"isOpenPosition", "entryPrice", "entryDate", "entryIBS", "entryDecisionTime", "currentTradeId"} {
 		if _, ok := got[k]; ok {
 			t.Fatalf("watch carries %s = %v; position state belongs to the journal", k, got[k])
@@ -570,11 +572,11 @@ func TestUpsertWatchKeepsExplicitZeroThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := mustWatch(t, db, "ZERO")
-	if asFloat(got["lowIBS"]) != 0 {
-		t.Fatalf("lowIBS=%v want 0 (explicit zero is not the missing-key default)", got["lowIBS"])
+	if got.LowIBS != 0 {
+		t.Fatalf("lowIBS=%v want 0 (explicit zero is not the missing-key default)", got.LowIBS)
 	}
-	if asFloat(got["highIBS"]) != 0.75 {
-		t.Fatalf("highIBS=%v", got["highIBS"])
+	if got.HighIBS != 0.75 {
+		t.Fatalf("highIBS=%v", got.HighIBS)
 	}
 }
 

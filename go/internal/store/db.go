@@ -1422,23 +1422,30 @@ func (d *DB) UpdateSettingsKeys(fn func(current map[string]any) (map[string]any,
 // position is open is not a property of the watch — the journal (`positions`)
 // answers that. Older databases still carry is_open_position/entry_*/
 // current_trade_id columns on this table; nothing reads or writes them.
-func (d *DB) ListWatches() ([]map[string]any, error) {
+// Watch is one ticker of the monitoring list with its own thresholds.
+type Watch struct {
+	Symbol       string  `json:"symbol"`
+	HighIBS      float64 `json:"highIBS"`
+	LowIBS       float64 `json:"lowIBS"`
+	ThresholdPct float64 `json:"thresholdPct"`
+	ChatID       string  `json:"chatId"`
+}
+
+func (d *DB) ListWatches() ([]Watch, error) {
 	rows, err := d.SQL.Query(`SELECT symbol, high_ibs, low_ibs, threshold_pct, chat_id FROM telegram_watches ORDER BY symbol`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := []map[string]any{}
+	out := []Watch{}
 	for rows.Next() {
-		var symbol string
-		var high, low, thr float64
+		var w Watch
 		var chat sql.NullString
-		if err := rows.Scan(&symbol, &high, &low, &thr, &chat); err != nil {
+		if err := rows.Scan(&w.Symbol, &w.HighIBS, &w.LowIBS, &w.ThresholdPct, &chat); err != nil {
 			return nil, err
 		}
-		out = append(out, map[string]any{
-			"symbol": symbol, "highIBS": high, "lowIBS": low, "thresholdPct": thr, "chatId": chat.String,
-		})
+		w.ChatID = chat.String
+		out = append(out, w)
 	}
 	return out, rows.Err()
 }

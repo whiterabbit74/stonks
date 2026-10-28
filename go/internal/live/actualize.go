@@ -122,7 +122,7 @@ func (e *Engine) Actualize(force bool) ActualizeResult {
 		return out
 	}
 	for _, w := range watches {
-		add(fmt.Sprint(w["symbol"]))
+		add(w.Symbol)
 	}
 	alerts, err := e.DB.ListEMAAlerts()
 	if err != nil {

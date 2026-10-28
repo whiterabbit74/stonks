@@ -286,9 +286,9 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 		return blocked("watchlist_unavailable", nil)
 	}
 	symbols := configuredSymbols(watches)
-	watchBy := map[string]map[string]any{}
-	for _, w := range watches {
-		watchBy[store.SafeTicker(fmt.Sprint(w["symbol"]))] = w
+	watchBy := map[string]*store.Watch{}
+	for i, w := range watches {
+		watchBy[store.SafeTicker(w.Symbol)] = &watches[i]
 	}
 	open, journalErr := e.openPosition()
 	if journalErr != nil {
@@ -308,10 +308,7 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 	var quotes []LiveQuote
 	evals := map[string]watchEval{}
 	for _, sym := range quoteSymbols {
-		w := watchBy[sym]
-		if w == nil {
-			w = map[string]any{"symbol": sym}
-		}
+		w := watchBy[sym] // nil for a held ticker off the watchlist
 		ev := e.evalWatch(sym, w, cfg, providerChain)
 		evals[sym] = ev
 		low, high := watchThresholds(w, cfg)

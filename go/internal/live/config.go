@@ -170,11 +170,11 @@ func sanitizeAutoTradingConfig(input, current map[string]any, now time.Time) (ma
 // on the monitoring page. A second list in the autotrade config used to narrow
 // it by intersection, which meant a ticker could be monitored, signal an entry,
 // and be silently skipped - two lists to keep in sync for no gain.
-func configuredSymbols(rows []map[string]any) []string {
+func configuredSymbols(rows []store.Watch) []string {
 	seen := map[string]struct{}{}
 	var out []string
 	for _, w := range rows {
-		s := store.SafeTicker(fmt.Sprint(w["symbol"]))
+		s := store.SafeTicker(w.Symbol)
 		if s == "" {
 			continue
 		}
@@ -292,15 +292,12 @@ func strOr(v any, fallback string) string {
 // cannot read into 0 — and a highIBS of 0 makes every reading an exit, which is
 // why the pair is resolved as a pair: ibs.Pair sends anything the write path
 // would have rejected back to the documented defaults.
-func watchThresholds(watch map[string]any, cfg TradingConfig) (low, high float64) {
+// watchThresholds are the watch's own thresholds; a ticker held off the
+// watchlist (watch == nil) uses the global ones.
+func watchThresholds(watch *store.Watch, cfg TradingConfig) (low, high float64) {
 	low, high = cfg.LowIBS, cfg.HighIBS
 	if watch != nil {
-		if watch["lowIBS"] != nil {
-			low = asFloat(watch["lowIBS"])
-		}
-		if watch["highIBS"] != nil {
-			high = asFloat(watch["highIBS"])
-		}
+		low, high = watch.LowIBS, watch.HighIBS
 	}
 	return ibs.Pair(low, high)
 }

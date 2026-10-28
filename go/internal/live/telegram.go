@@ -199,7 +199,7 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 	if stage != "confirmations" {
 		var watchSyms []string
 		for _, w := range watches {
-			watchSyms = append(watchSyms, fmt.Sprint(w["symbol"]))
+			watchSyms = append(watchSyms, w.Symbol)
 		}
 		e.prefetchQuotes(watchSyms, providerChain, backgroundWindow())
 		emaAlerts, err := e.EvaluateEMAAlerts()
@@ -213,9 +213,9 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		}
 		var rows []t1Watch
 		var integ []IntegrityResult
-		for _, w := range watches {
-			sym := fmt.Sprint(w["symbol"])
-			ev := e.evalWatch(sym, w, cfg, providerChain)
+		for i, w := range watches {
+			sym := w.Symbol
+			ev := e.evalWatch(sym, &watches[i], cfg, providerChain)
 			rows = append(rows, t1Watch{sym: sym, eval: ev})
 			out.Tickers = append(out.Tickers, sym)
 			if ev.blocked {
@@ -389,9 +389,9 @@ type t1Watch struct {
 
 // t1Rows are the report's watch rows, taken from the readings ev was decided
 // on rather than read again.
-func t1Rows(watches []map[string]any, ev EvalResult) (rows []t1Watch, integ []IntegrityResult) {
+func t1Rows(watches []store.Watch, ev EvalResult) (rows []t1Watch, integ []IntegrityResult) {
 	for _, w := range watches {
-		sym := fmt.Sprint(w["symbol"])
+		sym := w.Symbol
 		we := ev.evals[store.SafeTicker(sym)]
 		rows = append(rows, t1Watch{sym: sym, eval: we})
 		if we.blocked {
@@ -658,7 +658,7 @@ type watchEval struct {
 	warning                  IntegrityResult
 }
 
-func (e *Engine) evalWatch(sym string, w map[string]any, cfg TradingConfig, providerChain []string) watchEval {
+func (e *Engine) evalWatch(sym string, w *store.Watch, cfg TradingConfig, providerChain []string) watchEval {
 	low, high := watchThresholds(w, cfg)
 	ev := watchEval{low: low, high: high}
 	var ibsVal, price float64

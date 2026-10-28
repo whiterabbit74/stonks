@@ -1227,15 +1227,15 @@ func requireWatchError(t *testing.T, rec *httptest.ResponseRecorder) {
 	}
 }
 
-func watchBySymbol(t *testing.T, s *Server, symbol string) map[string]any {
+func watchBySymbol(t *testing.T, s *Server, symbol string) *store.Watch {
 	t.Helper()
 	list, err := s.DB.ListWatches()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, w := range list {
-		if w["symbol"] == symbol {
-			return w
+	for i := range list {
+		if list[i].Symbol == symbol {
+			return &list[i]
 		}
 	}
 	return nil
@@ -1277,7 +1277,7 @@ func TestWatchPatchRejectsThresholdsThatInvertPair(t *testing.T) {
 	if got == nil {
 		t.Fatal("row disappeared")
 	}
-	if got["lowIBS"] != 0.1 || got["highIBS"] != 0.75 {
+	if got.LowIBS != 0.1 || got.HighIBS != 0.75 {
 		t.Fatalf("row mutated on 400: %+v", got)
 	}
 }

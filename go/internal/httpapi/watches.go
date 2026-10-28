@@ -28,23 +28,35 @@ func (s *Server) handleWatches(w http.ResponseWriter, r *http.Request) {
 			bySym[p.Symbol] = p
 		}
 	}
+	out := make([]watchView, 0, len(list))
 	for _, wt := range list {
-		p, ok := bySym[wt["symbol"].(string)]
-		wt["isOpenPosition"] = ok
-		wt["entryPrice"], wt["entryDate"], wt["entryIBS"], wt["entryDecisionTime"], wt["currentTradeId"] = nil, nil, nil, nil, nil
-		if !ok {
-			continue
-		}
-		price := p.EntryPrice // the signal price; a broker fill when there is none
-		for _, leg := range []store.BrokerLeg{p.Webull, p.Robinhood} {
-			if price == nil {
-				price = leg.EntryPrice
+		v := watchView{Watch: wt}
+		if p, ok := bySym[wt.Symbol]; ok {
+			price := p.EntryPrice // the signal price; a broker fill when there is none
+			for _, leg := range []store.BrokerLeg{p.Webull, p.Robinhood} {
+				if price == nil {
+					price = leg.EntryPrice
+				}
 			}
+			v.IsOpenPosition = true
+			v.EntryPrice, v.EntryDate, v.EntryIBS = price, &p.EntryDate, p.EntryIBS
+			v.EntryDecisionTime, v.CurrentTradeID = &p.EntryDecisionTime, &p.ID
 		}
-		wt["entryPrice"], wt["entryDate"], wt["entryIBS"] = price, p.EntryDate, p.EntryIBS
-		wt["entryDecisionTime"], wt["currentTradeId"] = p.EntryDecisionTime, p.ID
+		out = append(out, v)
 	}
-	writeJSON(w, 200, list)
+	writeJSON(w, 200, out)
+}
+
+// watchView is a watch with the journal's open position on its ticker; the
+// position fields are null when there is none.
+type watchView struct {
+	store.Watch
+	IsOpenPosition    bool     `json:"isOpenPosition"`
+	EntryPrice        *float64 `json:"entryPrice"`
+	EntryDate         *string  `json:"entryDate"`
+	EntryIBS          *float64 `json:"entryIBS"`
+	EntryDecisionTime *string  `json:"entryDecisionTime"`
+	CurrentTradeID    *string  `json:"currentTradeId"`
 }
 
 func watchHasThresholdKey(body map[string]any) bool {
@@ -56,21 +68,20 @@ func watchHasThresholdKey(body map[string]any) bool {
 	return hasLow || hasHigh
 }
 
-func findWatch(list []map[string]any, symbol string) map[string]any {
+func findWatch(list []store.Watch, symbol string) *store.Watch {
 	want := store.SafeTicker(symbol)
 	if want == "" {
 		return nil
 	}
-	for _, w := range list {
-		s, _ := w["symbol"].(string)
-		if s == want {
-			return w
+	for i := range list {
+		if list[i].Symbol == want {
+			return &list[i]
 		}
 	}
 	return nil
 }
 
-func (s *Server) existingWatch(symbol string) map[string]any {
+func (s *Server) existingWatch(symbol string) *store.Watch {
 	list, err := s.DB.ListWatches()
 	if err != nil {
 		return nil
@@ -83,19 +94,14 @@ func watchBodySymbol(body map[string]any) string {
 	return s
 }
 
-func validateWatchThresholds(body, existing map[string]any) error {
+func validateWatchThresholds(body map[string]any, existing *store.Watch) error {
 	if !watchHasThresholdKey(body) {
 		return nil
 	}
 	low := ibs.DefaultLowIBS
 	high := ibs.DefaultHighIBS
 	if existing != nil {
-		if f, ok := existing["lowIBS"].(float64); ok {
-			low = f
-		}
-		if f, ok := existing["highIBS"].(float64); ok {
-			high = f
-		}
+		low, high = existing.LowIBS, existing.HighIBS
 	}
 	// The store parses a threshold with asFloat, which also reads strings, so
 	// skipping a non-float64 value here let `"lowIBS": "0.9"` pass validation
