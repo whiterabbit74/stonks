@@ -40,12 +40,12 @@ func TestPartialFillSurvivesJournalWriteFailure(t *testing.T) {
 		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
 		t.Fatal(err)
 	}
-	e.recordFill(tracker, detail, "partially_filled")
+	e.recordFill(tracker, od(detail), "partially_filled")
 	if _, err := db.SQL.Exec(`DROP TRIGGER audit_fail`); err != nil {
 		t.Fatal(err)
 	}
 	// Тот же ответ брокера приходит повторно — теперь он должен разнестись.
-	e.recordFill(tracker, detail, "partially_filled")
+	e.recordFill(tracker, od(detail), "partially_filled")
 
 	rows, err := db.ListPositions()
 	if err != nil {
@@ -64,7 +64,7 @@ func TestPartialFillSurvivesJournalWriteFailure(t *testing.T) {
 	}
 
 	// И не списаться дважды: третий тот же ответ ничего не меняет (CORE-04).
-	e.recordFill(tracker, detail, "partially_filled")
+	e.recordFill(tracker, od(detail), "partially_filled")
 	rows, err = db.ListPositions()
 	if err != nil {
 		t.Fatal(err)

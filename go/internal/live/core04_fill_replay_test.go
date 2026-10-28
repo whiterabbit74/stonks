@@ -36,8 +36,8 @@ func TestPartialFillReplayDoesNotReduceTwice(t *testing.T) {
 	}
 	detail := map[string]any{"status": "PARTIAL_FILLED", "filled_qty": 4.0, "filled_price": 11.0}
 
-	e.recordFill(tracker, detail, "partially_filled")
-	e.recordFill(tracker, detail, "partially_filled")
+	e.recordFill(tracker, od(detail), "partially_filled")
+	e.recordFill(tracker, od(detail), "partially_filled")
 
 	rows, err := db.ListPositions()
 	if err != nil {
@@ -77,8 +77,8 @@ func TestSecondPartialFillRecordsOnlyTheDifference(t *testing.T) {
 	if err := db.SaveOrderTracker(tracker); err != nil {
 		t.Fatal(err)
 	}
-	e.recordFill(tracker, map[string]any{"status": "PARTIAL_FILLED", "filled_qty": 4.0, "filled_price": 11.0}, "partially_filled")
-	e.recordFill(tracker, map[string]any{"status": "PARTIAL_FILLED", "filled_qty": 7.0, "filled_price": 11.0}, "partially_filled")
+	e.recordFill(tracker, od(map[string]any{"status": "PARTIAL_FILLED", "filled_qty": 4.0, "filled_price": 11.0}), "partially_filled")
+	e.recordFill(tracker, od(map[string]any{"status": "PARTIAL_FILLED", "filled_qty": 7.0, "filled_price": 11.0}), "partially_filled")
 
 	rows, err := db.ListPositions()
 	if err != nil {

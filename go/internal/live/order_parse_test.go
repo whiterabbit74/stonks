@@ -25,3 +25,9 @@ func TestOrderStatusFieldIgnoresSceneType(t *testing.T) {
 		t.Fatalf("got %q", s)
 	}
 }
+
+// od is a broker answer as an adapter hands it to the engine.
+func od(m map[string]any) *BrokerOrder {
+	o := orderFromRow(m)
+	return &o
+}

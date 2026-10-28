@@ -167,7 +167,7 @@ func TestRobinhoodFillDoesNotCloseWebullLeg(t *testing.T) {
 	e.recordFill(store.Tracker{
 		ClientOrderID: "rh-sell", Symbol: "AAPL", Action: "exit",
 		Source: "t1", DateKey: "2026-09-01", Quantity: 3.0, Broker: "robinhood", QuotePrice: 11.9,
-	}, map[string]any{"status": "filled", "avg_price": 11.9, "filled_qty": 3.0}, "filled")
+	}, od(map[string]any{"status": "filled", "avg_price": 11.9, "filled_qty": 3.0}), "filled")
 	p, _ := e.DB.GetPosition("aapl")
 	if p == nil || p.Status != "open" {
 		t.Fatalf("position must stay open while webull holds it: %+v", p)

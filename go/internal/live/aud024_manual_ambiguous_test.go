@@ -27,12 +27,12 @@ func (b *ambiguousBroker) Account(ctx context.Context) (map[string]any, error) {
 func (b *ambiguousBroker) Positions(ctx context.Context) ([]any, error) {
 	return []any{map[string]any{"symbol": "AAPL", "quantity": 3.0}}, nil
 }
-func (b *ambiguousBroker) OpenOrders(ctx context.Context) ([]any, error) { return nil, nil }
-func (b *ambiguousBroker) OrderHistory(context.Context, string, string) ([]any, error) {
+func (b *ambiguousBroker) OpenOrders(ctx context.Context) ([]BrokerOrder, error) { return nil, nil }
+func (b *ambiguousBroker) OrderHistory(context.Context, string, string) ([]BrokerOrder, error) {
 	return nil, nil
 }
 func (b *ambiguousBroker) CancelOrder(context.Context, string) error { return nil }
-func (b *ambiguousBroker) OrderDetail(context.Context, string) (map[string]any, error) {
+func (b *ambiguousBroker) OrderDetail(context.Context, string) (*BrokerOrder, error) {
 	return nil, fmt.Errorf("order detail: timeout")
 }
 

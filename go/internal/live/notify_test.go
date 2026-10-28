@@ -39,7 +39,7 @@ func TestFailedNotificationIsLogged(t *testing.T) {
 
 func TestTrackerNoticeText(t *testing.T) {
 	exit := store.Tracker{Symbol: "MSFT", Action: "exit", Quantity: 1.0, Broker: "robinhood", Source: "telegram_t1"}
-	if got := trackerNoticeText(exit, map[string]any{"avg_price": 535.12, "filled_qty": 1.0}, "filled"); got != "<b>Robinhood</b>: продано 1 MSFT по $535.12" {
+	if got := trackerNoticeText(exit, od(map[string]any{"avg_price": 535.12, "filled_qty": 1.0}), "filled"); got != "<b>Robinhood</b>: продано 1 MSFT по $535.12" {
 		t.Fatalf("T-1 exit fill: %q", got)
 	}
 	if got := trackerNoticeText(exit, nil, "filled"); got != "<b>Robinhood</b>: продано 1 MSFT — цена не подтверждена" {
@@ -72,7 +72,7 @@ func TestPositionCloseSendsResultAfterLastFill(t *testing.T) {
 		if err := e.DB.SaveOrderTracker(tr); err != nil {
 			t.Fatal(err)
 		}
-		e.finalizeTrackerStatus(tr, map[string]any{"status": "FILLED", "avg_price": price, "filled_qty": qty}, "filled")
+		e.finalizeTrackerStatus(tr, od(map[string]any{"status": "FILLED", "avg_price": price, "filled_qty": qty}), "filled")
 	}
 	exit("rh-out", "robinhood", 1, 535.12)
 	if body := telegramBody(t, e); strings.Contains(body, "закрыта") {

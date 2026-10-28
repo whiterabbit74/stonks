@@ -3,7 +3,6 @@ package live
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -567,8 +566,7 @@ func TestRobinhoodOrderHistoryFiltersByDateRange(t *testing.T) {
 	}
 	ids := map[string]bool{}
 	for _, row := range got {
-		m, _ := row.(map[string]any)
-		ids[fmtString(m["id"])] = true
+		ids[row.BrokerOrderID] = true
 	}
 	if ids["july"] {
 		t.Fatalf("OrderHistory must drop 2026-07-01: %+v", got)
@@ -752,11 +750,11 @@ func TestOrderDetailFindsOrderByBrokerOrderID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("order must be findable after placement: %v", err)
 	}
-	if fmt.Sprint(detail["id"]) != rhID {
+	if detail.BrokerOrderID != rhID {
 		t.Fatalf("detail %+v", detail)
 	}
-	if NormalizeOrderStatus(fmt.Sprint(detail["status"])) != "filled" {
-		t.Fatalf("status %v", detail["status"])
+	if detail.Status != "filled" {
+		t.Fatalf("status %v", detail.Status)
 	}
 }
 
@@ -830,8 +828,8 @@ func TestOrderDetailAfterEnvelopedPlaceResponse(t *testing.T) {
 	if orderIDArg != rhID {
 		t.Fatalf("get_equity_orders must be asked for order_id=%s, got %q", rhID, orderIDArg)
 	}
-	if NormalizeOrderStatus(fmt.Sprint(detail["status"])) != "filled" {
-		t.Fatalf("status %v", detail["status"])
+	if detail.Status != "filled" {
+		t.Fatalf("status %v", detail.Status)
 	}
 }
 

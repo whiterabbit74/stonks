@@ -366,10 +366,10 @@ func (e *Engine) retryRejectedSells(w execWindow, ev EvalResult, trigger, corr, 
 			}
 			switch status {
 			case "rejected", "cancelled", "expired":
-				detail, err := retryBrokerReadWindow(e, w, "order_detail", func(ctx context.Context) (map[string]any, error) {
+				detail, err := retryBrokerReadWindow(e, w, "order_detail", func(ctx context.Context) (*BrokerOrder, error) {
 					return br.OrderDetail(ctx, s.ClientOrderID)
 				})
-				if err != nil || fillQtyFrom(detail) > 0 {
+				if err != nil || detail.filledQty() > 0 {
 					continue
 				}
 			case "terminal_absent": // the broker has no such order: nothing filled

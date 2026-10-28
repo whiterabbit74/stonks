@@ -343,14 +343,14 @@ func (m *MemoryBroker) RawSplits(symbol string) ([]map[string]any, error) {
 	return m.Splits, nil
 }
 
-func (m *MemoryBroker) OpenOrders(ctx context.Context) ([]any, error) {
+func (m *MemoryBroker) OpenOrders(ctx context.Context) ([]BrokerOrder, error) {
 	if m.FailOpenOrders != nil {
 		return nil, m.FailOpenOrders
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.Open != nil {
-		return m.Open, nil
+		return ordersFromRows(m.Open), nil
 	}
 	var out []any
 	for _, o := range m.Orders {
@@ -362,20 +362,23 @@ func (m *MemoryBroker) OpenOrders(ctx context.Context) ([]any, error) {
 			"symbol": o.Symbol, "client_order_id": o.ClientOrderID, "status": o.Status,
 		})
 	}
-	if out == nil {
-		out = []any{}
-	}
-	return out, nil
+	return ordersFromRows(out), nil
 }
 
-func (m *MemoryBroker) OrderHistory(ctx context.Context, start, end string) ([]any, error) {
-	if m.Hist != nil {
-		return m.Hist, nil
-	}
-	return []any{}, nil
+func (m *MemoryBroker) OrderHistory(ctx context.Context, start, end string) ([]BrokerOrder, error) {
+	return ordersFromRows(m.Hist), nil
 }
 
-func (m *MemoryBroker) OrderDetail(ctx context.Context, clientOrderID string) (map[string]any, error) {
+func (m *MemoryBroker) OrderDetail(ctx context.Context, clientOrderID string) (*BrokerOrder, error) {
+	d, err := m.orderDetail(clientOrderID)
+	if err != nil || d == nil {
+		return nil, err
+	}
+	o := orderFromRow(d)
+	return &o, nil
+}
+
+func (m *MemoryBroker) orderDetail(clientOrderID string) (map[string]any, error) {
 	if m.BeforeDetail != nil {
 		m.BeforeDetail()
 	}

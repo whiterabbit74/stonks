@@ -389,11 +389,11 @@ func (e *Engine) pollTracker(t store.Tracker) (bool, error) {
 		return false, derr
 	}
 	if detail != nil {
-		status = NormalizeOrderStatus(orderStatusField(detail))
+		status = detail.Status
 		if status == "unknown" {
 			if snap := e.findOrderSnapshotOn(br, id); snap != nil {
 				detail = snap
-				status = NormalizeOrderStatus(orderStatusField(snap))
+				status = snap.Status
 			}
 		}
 	}
@@ -401,7 +401,7 @@ func (e *Engine) pollTracker(t store.Tracker) (bool, error) {
 		// A fully executed quantity is proof of a fill regardless of what the
 		// broker calls the state, so an unrecognised status word cannot leave a
 		// real position polling until it "expires".
-		if ordered := t.Quantity; ordered > 0 && fillQtyFrom(detail) >= ordered-1e-9 {
+		if ordered := t.Quantity; ordered > 0 && detail.filledQty() >= ordered-1e-9 {
 			status = "filled"
 		}
 	}
@@ -412,8 +412,8 @@ func (e *Engine) pollTracker(t store.Tracker) (bool, error) {
 		// A partial fill is known only from this answer. Keep it, so that a
 		// tracker ending later with no answer still journals these shares
 		// (AUD-135).
-		if q := fillQtyFrom(detail); q > 0 {
-			if err := e.DB.NoteTrackerFill(id, q, fillPriceFrom(detail)); err != nil {
+		if q := detail.filledQty(); q > 0 {
+			if err := e.DB.NoteTrackerFill(id, q, detail.filledPrice()); err != nil {
 				e.logAuto("tracker_fill_persist_failed", e.metaCorr(id), map[string]any{
 					"clientOrderId": id, "filledQty": q, "error": err.Error(),
 				})
@@ -583,13 +583,7 @@ func (e *Engine) ResolveTracker(clientOrderID, outcome, note string, filledPrice
 	if outcome == "absent" {
 		done = e.finalizeTrackerAsIs(*t, nil, "terminal_absent")
 	} else {
-		detail := map[string]any{}
-		if filledPrice > 0 {
-			detail["filled_price"] = filledPrice
-		}
-		if filledQty > 0 {
-			detail["filled_qty"] = filledQty
-		}
+		detail := &BrokerOrder{Status: "filled", FilledPrice: filledPrice, FilledQty: filledQty}
 		done = e.finalizeTrackerAsIs(*t, detail, "filled")
 	}
 	// Отказ записи исполнения или статуса — не «разрешено»: оператор получал
@@ -626,8 +620,8 @@ func (e *Engine) finalizeTracker(t store.Tracker, status string) bool {
 // broker confirmed while the order was working. Ending it on nothing dropped
 // shares already bought or sold from the journal (AUD-135). "filled" without
 // a quantity means the whole order and keeps its own fallback.
-func (e *Engine) finalizeTrackerStatus(t store.Tracker, detail map[string]any, status string) bool {
-	if status != "filled" && !(fillQtyFrom(detail) > 0) {
+func (e *Engine) finalizeTrackerStatus(t store.Tracker, detail *BrokerOrder, status string) bool {
+	if status != "filled" && !(detail.filledQty() > 0) {
 		id := t.ClientOrderID
 		qty, price, err := e.DB.TrackerFill(id)
 		if err != nil {
@@ -637,15 +631,15 @@ func (e *Engine) finalizeTrackerStatus(t store.Tracker, detail map[string]any, s
 			return false
 		}
 		if qty > 0 {
-			known := map[string]any{}
-			for k, v := range detail {
-				known[k] = v
+			known := BrokerOrder{}
+			if detail != nil {
+				known = *detail
 			}
-			known["filled_qty"] = qty
+			known.FilledQty = qty
 			if price > 0 {
-				known["filled_price"] = price
+				known.FilledPrice = price
 			}
-			detail = known
+			detail = &known
 		}
 	}
 	return e.finalizeTrackerAsIs(t, detail, status)
@@ -653,7 +647,7 @@ func (e *Engine) finalizeTrackerStatus(t store.Tracker, detail map[string]any, s
 
 // finalizeTrackerAsIs is finalizeTrackerStatus without the last known fill:
 // for an operator's resolution, which states the outcome itself.
-func (e *Engine) finalizeTrackerAsIs(t store.Tracker, detail map[string]any, status string) bool {
+func (e *Engine) finalizeTrackerAsIs(t store.Tracker, detail *BrokerOrder, status string) bool {
 	id := t.ClientOrderID
 	// Record the trade before marking the tracker final so a waiter that
 	// keys off pending status cannot observe a filled tracker with no row.
@@ -684,17 +678,17 @@ func (e *Engine) finalizeTrackerAsIs(t store.Tracker, detail map[string]any, sta
 // trackerNoticeText is the operator's line for an order that reached a final
 // status: "Robinhood: продано 1 MSFT по $535.12". The source is named only when
 // the order did not come from the regular T-1 cycle.
-func trackerNoticeText(t store.Tracker, detail map[string]any, status string) string {
+func trackerNoticeText(t store.Tracker, detail *BrokerOrder, status string) string {
 	sym := store.SafeTicker(t.Symbol)
 	exit := t.Action == "exit"
 	var text string
 	if status == "filled" {
-		qty := fillQtyFrom(detail)
+		qty := detail.filledQty()
 		if !(qty > 0) {
 			qty = t.Quantity
 		}
 		price := "— цена не подтверждена"
-		if p := fillPriceFrom(detail); p > 0 {
+		if p := detail.filledPrice(); p > 0 {
 			price = fmt.Sprintf("по $%.2f", p)
 		}
 		verb := "куплено"
@@ -734,18 +728,14 @@ func trackerStatusText(status string) string {
 	return html.EscapeString(status)
 }
 
-func (e *Engine) findOrderSnapshotOn(br Broker, clientOrderID string) map[string]any {
+func (e *Engine) findOrderSnapshotOn(br Broker, clientOrderID string) *BrokerOrder {
 	if br == nil {
 		return nil
 	}
-	match := func(rows []any) map[string]any {
-		for _, row := range rows {
-			m := extractOrderDetailPayload(row)
-			if m == nil {
-				m = mapOf(row)
-			}
-			if clientOrderIDOf(m) == clientOrderID {
-				return m
+	match := func(rows []BrokerOrder) *BrokerOrder {
+		for i := range rows {
+			if rows[i].ClientOrderID == clientOrderID {
+				return &rows[i]
 			}
 		}
 		return nil

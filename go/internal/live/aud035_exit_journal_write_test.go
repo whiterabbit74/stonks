@@ -32,7 +32,7 @@ func TestExitJournalWriteFailureBlocksEntries(t *testing.T) {
 	e.recordFill(store.Tracker{
 		ClientOrderID: oid, Symbol: "AAPL", Action: "exit",
 		Quantity: 2.0, DateKey: "2026-09-01", Broker: "webull",
-	}, map[string]any{"filled_price": 11.0, "filled_qty": 2.0}, "filled")
+	}, od(map[string]any{"filled_price": 11.0, "filled_qty": 2.0}), "filled")
 
 	if !e.trackerPersistBlocked("webull") {
 		t.Fatal("an exit fill the journal did not record must block further entries")

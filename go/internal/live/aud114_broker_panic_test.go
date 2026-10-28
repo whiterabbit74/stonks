@@ -13,7 +13,7 @@ type panicBroker struct {
 }
 
 func (p *panicBroker) Positions(context.Context) ([]any, error) { panic("audit: broker down") }
-func (p *panicBroker) OpenOrders(context.Context) ([]any, error) {
+func (p *panicBroker) OpenOrders(context.Context) ([]BrokerOrder, error) {
 	panic("audit: broker down")
 }
 

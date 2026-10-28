@@ -112,11 +112,11 @@ func (s *Server) handleRobinhoodDashboard(w http.ResponseWriter, r *http.Request
 	today := tradingdate.TodayNYSE(time.Now())
 	open, oerr := br.OpenOrders(r.Context())
 	if open == nil {
-		open = []any{}
+		open = []live.BrokerOrder{}
 	}
 	hist, herr := br.OrderHistory(r.Context(), tradingdate.AddDays(today, -30), today)
 	if hist == nil {
-		hist = []any{}
+		hist = []live.BrokerOrder{}
 	}
 	out := map[string]any{
 		"account":      acct,

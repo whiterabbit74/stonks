@@ -294,7 +294,7 @@ func (b *RobinhoodBroker) brokerOrderID(ref string) string {
 	return b.Svc.DB.RobinhoodOrderID(ref)
 }
 
-func (b *RobinhoodBroker) OrderDetail(ctx context.Context, clientOrderID string) (map[string]any, error) {
+func (b *RobinhoodBroker) OrderDetail(ctx context.Context, clientOrderID string) (*BrokerOrder, error) {
 	acct, err := b.agenticAccountCtx(ctx)
 	if err != nil {
 		return nil, err
@@ -325,14 +325,19 @@ func (b *RobinhoodBroker) OrderDetail(ctx context.Context, clientOrderID string)
 	}
 	st := robinhoodOrderStatus(found)
 	found["status"] = st
-	return found, nil
+	o := orderFromRow(found)
+	return &o, nil
 }
 
-func (b *RobinhoodBroker) OpenOrders(ctx context.Context) ([]any, error) {
-	return b.ordersByState(ctx, false)
+func (b *RobinhoodBroker) OpenOrders(ctx context.Context) ([]BrokerOrder, error) {
+	rows, err := b.ordersByState(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	return ordersFromRows(rows), nil
 }
 
-func (b *RobinhoodBroker) OrderHistory(ctx context.Context, start, end string) ([]any, error) {
+func (b *RobinhoodBroker) OrderHistory(ctx context.Context, start, end string) ([]BrokerOrder, error) {
 	acct, err := b.agenticAccountCtx(ctx)
 	if err != nil {
 		return nil, err
@@ -351,7 +356,7 @@ func (b *RobinhoodBroker) OrderHistory(ctx context.Context, start, end string) (
 	}
 	var out []any
 	collectOrders(root, &out)
-	return filterOrdersBySessionDate(out, start, end), nil
+	return ordersFromRows(filterOrdersBySessionDate(out, start, end)), nil
 }
 
 func (b *RobinhoodBroker) ordersByState(ctx context.Context, all bool) ([]any, error) {
@@ -398,7 +403,7 @@ func (b *RobinhoodBroker) CancelOrder(ctx context.Context, clientOrderID string)
 	if err != nil {
 		return err
 	}
-	id := strings.TrimSpace(fmt.Sprint(first(detail, "id", "order_id")))
+	id := detail.BrokerOrderID
 	if _, err := uuid.Parse(id); err != nil {
 		return fmt.Errorf("cancel: no broker order_id for ref %s", ref)
 	}

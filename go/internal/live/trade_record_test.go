@@ -30,7 +30,7 @@ func TestFillMessagesUseTrackerBroker(t *testing.T) {
 		e.recordFill(store.Tracker{
 			ClientOrderID: id, Symbol: "AAPL", Action: "entry",
 			Quantity: 10.0, DateKey: "2026-09-01", Broker: "robinhood",
-		}, map[string]any{"status": "filled", "filled_qty": 4.0, "avg_price": 8.2}, "filled")
+		}, od(map[string]any{"status": "filled", "filled_qty": 4.0, "avg_price": 8.2}), "filled")
 		body := telegramBody(t, e)
 		if !strings.Contains(body, "Robinhood: частичное исполнение") {
 			t.Fatalf("partial fill must name Robinhood, got %q", body)
@@ -45,7 +45,7 @@ func TestFillMessagesUseTrackerBroker(t *testing.T) {
 		e.recordFill(store.Tracker{
 			ClientOrderID: id, Symbol: "AAPL", Action: "entry",
 			Quantity: 10.0, DateKey: "2026-09-01", Broker: "robinhood",
-		}, map[string]any{"status": "filled", "filled_qty": 4.0, "avg_price": 8.2}, "filled")
+		}, od(map[string]any{"status": "filled", "filled_qty": 4.0, "avg_price": 8.2}), "filled")
 		body := telegramBody(t, e)
 		if !strings.Contains(body, "Robinhood: частичное исполнение") {
 			t.Fatalf("tracker t[broker] must name Robinhood, got %q", body)
@@ -61,7 +61,7 @@ func TestFillMessagesUseTrackerBroker(t *testing.T) {
 		e.recordFill(store.Tracker{
 			ClientOrderID: id, Symbol: "AAPL", Action: "entry",
 			Quantity: 1.0, DateKey: "2026-09-01", Broker: "robinhood", QuotePrice: 8.2,
-		}, map[string]any{"status": "filled", "filled_qty": 1.0, "avg_price": 9.0}, "filled")
+		}, od(map[string]any{"status": "filled", "filled_qty": 1.0, "avg_price": 9.0}), "filled")
 		body := telegramBody(t, e)
 		if !strings.Contains(body, "Robinhood: проскальзывание") {
 			t.Fatalf("slippage must name Robinhood, got %q", body)
@@ -90,7 +90,7 @@ func TestUnconfirmedFillPriceIsNullNotZero(t *testing.T) {
 	e.recordFill(store.Tracker{
 		ClientOrderID: id, Symbol: "AAPL", Action: "entry",
 		Quantity: 2.0, DateKey: "2026-09-01", Broker: "robinhood",
-	}, map[string]any{"status": "filled", "filled_qty": 2.0}, "filled")
+	}, od(map[string]any{"status": "filled", "filled_qty": 2.0}), "filled")
 
 	row, _ := e.DB.GetPosition(id)
 	if row == nil {
@@ -124,7 +124,7 @@ func TestJournalSQLUpdateErrorBlocksEntry(t *testing.T) {
 	e.recordFill(store.Tracker{
 		ClientOrderID: id, Symbol: "MSFT", Action: "entry",
 		Quantity: 1.0, DateKey: "2026-09-01", Broker: "webull",
-	}, map[string]any{"status": "filled", "filled_qty": 1.0, "avg_price": 8.2}, "filled")
+	}, od(map[string]any{"status": "filled", "filled_qty": 1.0, "avg_price": 8.2}), "filled")
 
 	if !e.trackerPersistBlocked("webull") {
 		t.Fatal("SQL update error on the journal must raise the tracker persist block")

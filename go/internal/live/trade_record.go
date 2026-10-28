@@ -49,7 +49,7 @@ func (e *Engine) openPositionFor(symbol, preferID, broker string) (*store.Positi
 // recordFill journals one broker answer. It returns false when the journal
 // write failed, so the caller keeps the tracker pending and the next poll
 // retries instead of stamping a final status over a fill nobody recorded.
-func (e *Engine) recordFill(t store.Tracker, detail map[string]any, status string) bool {
+func (e *Engine) recordFill(t store.Tracker, detail *BrokerOrder, status string) bool {
 	clientOrderID := t.ClientOrderID
 	symbol := store.SafeTicker(t.Symbol)
 	action := t.Action
@@ -61,10 +61,10 @@ func (e *Engine) recordFill(t store.Tracker, detail map[string]any, status strin
 
 	brokerName := fillBrokerName(t)
 
-	fillPrice := fillPriceFrom(detail)
+	fillPrice := detail.filledPrice()
 	// reportedQty is what the broker says actually executed. Keep it separate
 	// from the fallbacks below: it is the only evidence of a partial fill.
-	reportedQty := fillQtyFrom(detail)
+	reportedQty := detail.filledQty()
 	orderedQty := t.Quantity
 	fillQty := reportedQty
 	unconfirmedPrice := false

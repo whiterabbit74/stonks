@@ -5,7 +5,44 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	"mktorder.com/go/internal/store"
 )
+
+// orderFromRow reads one broker order answer the forgiving way: the field
+// names of Webull, Robinhood and the test broker all count. Adapters call it at
+// their edge; the engine only sees the result.
+func orderFromRow(row any) BrokerOrder {
+	m := extractOrderDetailPayload(row)
+	o := BrokerOrder{Raw: row, Status: "unknown"}
+	if m == nil {
+		return o
+	}
+	o.ClientOrderID = clientOrderIDOf(m)
+	if id := strings.TrimSpace(fmt.Sprint(firstNonEmpty(m["id"], m["order_id"]))); id != "" {
+		o.BrokerOrderID = id
+	}
+	o.Symbol = store.SafeTicker(fmt.Sprint(firstNonEmpty(m["symbol"], m["ticker"], m["display_symbol"])))
+	o.Status = NormalizeOrderStatus(orderStatusField(m))
+	if o.Status == "unknown" {
+		o.Status = NormalizeOrderStatus(fmt.Sprint(firstNonEmpty(m["state"])))
+	}
+	o.FilledQty = fillQtyFrom(m)
+	o.FilledPrice = fillPriceFrom(m)
+	return o
+}
+
+// ordersFromRows converts a listing; rows that are not order objects at all
+// are dropped, as the engine always skipped them.
+func ordersFromRows(rows []any) []BrokerOrder {
+	out := []BrokerOrder{}
+	for _, row := range rows {
+		if extractOrderDetailPayload(row) != nil {
+			out = append(out, orderFromRow(row))
+		}
+	}
+	return out
+}
 
 // extractOrderDetailPayload ports autotrade.js extractOrderDetailPayload:
 // descend into data, then data.orders[0] / list[0] / items[0].

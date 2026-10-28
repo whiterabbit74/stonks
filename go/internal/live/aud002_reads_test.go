@@ -21,7 +21,7 @@ func TestAUD002UnreadableJournalOnExitFillRaisesBlock(t *testing.T) {
 	e.recordFill(store.Tracker{
 		ClientOrderID: id, Symbol: "AAPL", Action: "exit",
 		Quantity: 1.0, DateKey: "2026-09-01", Broker: "webull",
-	}, map[string]any{"status": "filled", "filled_qty": 1.0, "avg_price": 10.0}, "filled")
+	}, od(map[string]any{"status": "filled", "filled_qty": 1.0, "avg_price": 10.0}), "filled")
 
 	if !e.trackerPersistBlocked("webull") {
 		t.Fatal("an unrecordable exit fill must raise the tracker persist block")

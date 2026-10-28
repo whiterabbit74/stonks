@@ -583,7 +583,7 @@ func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg
 			return res, nil
 		}
 		if landed {
-			st := NormalizeOrderStatus(orderStatusField(detail))
+			st := detail.Status
 			// "Landed" only means the broker knows the id. An order it already
 			// rejected or cancelled did reach it, but nothing was bought or
 			// sold, and reporting Submitted here would tell the operator the
@@ -620,10 +620,10 @@ func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg
 			if st != "" && st != "unknown" {
 				res.Status = st
 			}
-			if p := fillPriceFrom(detail); p > 0 {
+			if p := detail.filledPrice(); p > 0 {
 				res.FilledPrice = p
 			}
-			if q := fillQtyFrom(detail); q > 0 {
+			if q := detail.filledQty(); q > 0 {
 				res.FilledQty = q
 			}
 			return res, nil
@@ -765,7 +765,7 @@ func (e *Engine) abortPlaceForDeadline(symbol, side string, qty float64, attempt
 // conservative answer — a cancelled-by-deadline submission must resolve
 // Ambiguous, never "safe to retry" and never "confirmed lost". See P1-1 and
 // the "Идемпотентность отправки" note in AUTOTRADE_ROADMAP.md.
-func (e *Engine) orderLanded(w execWindow, clientOrderID string, br Broker) (landed, queryFailed bool, detail map[string]any) {
+func (e *Engine) orderLanded(w execWindow, clientOrderID string, br Broker) (landed, queryFailed bool, detail *BrokerOrder) {
 	if br == nil || clientOrderID == "" {
 		return false, false, nil
 	}
@@ -781,7 +781,7 @@ func (e *Engine) orderLanded(w execWindow, clientOrderID string, br Broker) (lan
 	if detail == nil {
 		return false, false, nil
 	}
-	if clientOrderIDOf(detail) == clientOrderID {
+	if detail.ClientOrderID == clientOrderID {
 		return true, false, detail
 	}
 	return false, false, nil
@@ -959,7 +959,7 @@ func (e *Engine) t1BrokerReconcile(w execWindow) (busy map[string]map[string]boo
 		wg.Add(1)
 		go func(name string, br Broker) {
 			defer wg.Done()
-			rows, err := retryBrokerReadWindow(e, w, "open_orders", func(ctx context.Context) ([]any, error) {
+			rows, err := retryBrokerReadWindow(e, w, "open_orders", func(ctx context.Context) ([]BrokerOrder, error) {
 				return br.OpenOrders(ctx)
 			})
 			mu.Lock()
@@ -971,18 +971,10 @@ func (e *Engine) t1BrokerReconcile(w execWindow) (busy map[string]map[string]boo
 				return
 			}
 			for _, row := range rows {
-				m := mapOf(row)
-				if m == nil {
+				if IsFinalOrderStatus(row.Status) {
 					continue
 				}
-				st := NormalizeOrderStatus(fmt.Sprint(firstNonEmpty(m["status"], m["order_status"], m["orderStatus"], m["state"])))
-				if IsFinalOrderStatus(st) {
-					continue
-				}
-				// Robinhood answers with state/ref_id rather than status/
-				// client_order_id, so the symbol is read the same forgiving way
-				// cancelOpenOrdersBeforeEntry reads it (AUD-045).
-				sym := store.SafeTicker(fmt.Sprint(firstNonEmpty(m["symbol"], m["ticker"], m["display_symbol"])))
+				sym := row.Symbol
 				if sym == "" {
 					// An order we cannot even attribute to a ticker is the
 					// unknown case: hold back this broker's entries, keep its
@@ -1212,8 +1204,8 @@ func (e *Engine) Dashboard() (map[string]any, error) {
 		}
 		acc["errors"] = errs
 	}
-	open := []any{}
-	hist := []any{}
+	open := []BrokerOrder{}
+	hist := []BrokerOrder{}
 	if e.Broker != nil {
 		if rows, oerr := e.Broker.OpenOrders(context.Background()); oerr == nil && rows != nil {
 			open = rows
@@ -1439,7 +1431,7 @@ func (e *Engine) cancelOpenOrdersBeforeEntry(w execWindow, symbol string, br Bro
 	if br == nil || e.DB == nil {
 		return nil, nil
 	}
-	rows, err := retryBrokerReadWindow(e, w, "open_orders", func(ctx context.Context) ([]any, error) {
+	rows, err := retryBrokerReadWindow(e, w, "open_orders", func(ctx context.Context) ([]BrokerOrder, error) {
 		return br.OpenOrders(ctx)
 	})
 	if err != nil {
@@ -1451,22 +1443,11 @@ func (e *Engine) cancelOpenOrdersBeforeEntry(w execWindow, symbol string, br Bro
 	want := store.SafeTicker(symbol)
 	var cancelled []string
 	for _, row := range rows {
-		m, _ := row.(map[string]any)
-		if m == nil {
+		sym := row.Symbol
+		if sym != want || IsFinalOrderStatus(row.Status) {
 			continue
 		}
-		sym := store.SafeTicker(fmt.Sprint(firstNonEmpty(m["symbol"], m["ticker"], m["display_symbol"])))
-		if sym != want {
-			continue
-		}
-		// Robinhood называет поля ref_id и state: по client_order_id/status
-		// его заявки молча пропускались и оставались висеть на бирже
-		// при отправке нового входа (AUD-045).
-		st := NormalizeOrderStatus(fmt.Sprint(firstNonEmpty(m["status"], m["order_status"], m["orderStatus"], m["state"])))
-		if IsFinalOrderStatus(st) {
-			continue
-		}
-		id := clientOrderIDOf(m)
+		id := row.ClientOrderID
 		if id == "" {
 			continue
 		}

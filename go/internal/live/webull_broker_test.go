@@ -131,7 +131,7 @@ func TestFilledSubstringInFieldNamesIsNotFill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if NormalizeOrderStatus(orderStatusField(detail)) != "working" {
+	if detail.Status != "working" {
 		t.Fatalf("detail status %+v", detail)
 	}
 }

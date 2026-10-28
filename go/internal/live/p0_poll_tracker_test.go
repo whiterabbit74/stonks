@@ -198,7 +198,7 @@ func TestFinalizeTrackerStatusUsesBrokerLabel(t *testing.T) {
 	e.finalizeTrackerStatus(store.Tracker{
 		ClientOrderID: "rh-fill", Symbol: "AAPL", Action: "entry",
 		Source: "t1", Quantity: 2.0, Broker: "robinhood",
-	}, map[string]any{"status": "FILLED", "avg_price": 8.2, "filled_qty": 2.0}, "filled")
+	}, od(map[string]any{"status": "FILLED", "avg_price": 8.2, "filled_qty": 2.0}), "filled")
 	assertTelegramContains(t, tg, "<b>Robinhood</b>: куплено 2 AAPL по $8.20")
 	assertTelegramOmits(t, tg, "Webull")
 

@@ -274,7 +274,7 @@ func (b *LiveBroker) RawSplits(symbol string) ([]map[string]any, error) {
 // OrderDetail is bounded by the caller's context: placeMarket's landed-order
 // check runs under the same T-1 deadline as the placement itself. See P1-1 in
 // AUTOTRADE_ROADMAP.md.
-func (b *LiveBroker) OrderDetail(ctx context.Context, clientOrderID string) (map[string]any, error) {
+func (b *LiveBroker) OrderDetail(ctx context.Context, clientOrderID string) (*BrokerOrder, error) {
 	c := b.client()
 	resp, err := c.OrderDetailCtx(ctx, c.AccountID, clientOrderID)
 	if err != nil {
@@ -324,7 +324,8 @@ func (b *LiveBroker) OrderDetail(ctx context.Context, clientOrderID string) (map
 	if NormalizeOrderStatus(orderStatusField(out)) == "unknown" && clientOrderIDOf(out) == "" {
 		return nil, fmt.Errorf("%w: %s", ErrOrderUnavailable, clientOrderID)
 	}
-	return out, nil
+	o := orderFromRow(out)
+	return &o, nil
 }
 
 func (b *LiveBroker) findOrderSnapshotByClientOrderID(ctx context.Context, clientOrderID string) map[string]any {
@@ -340,12 +341,12 @@ func (b *LiveBroker) findOrderSnapshotByClientOrderID(ctx context.Context, clien
 		}
 		return nil
 	}
-	if open, err := b.OpenOrders(ctx); err == nil {
+	if open, err := b.openOrderRows(ctx); err == nil {
 		if m := match(open); m != nil {
 			return m
 		}
 	}
-	if hist, err := b.OrderHistory(ctx, "", ""); err == nil {
+	if hist, err := b.orderHistoryRows(ctx, "", ""); err == nil {
 		return match(hist)
 	}
 	return nil
@@ -353,7 +354,15 @@ func (b *LiveBroker) findOrderSnapshotByClientOrderID(ctx context.Context, clien
 
 // OpenOrders is bounded by the caller's context: see Positions / OrderDetail
 // above and P1-1 in AUTOTRADE_ROADMAP.md.
-func (b *LiveBroker) OpenOrders(ctx context.Context) ([]any, error) {
+func (b *LiveBroker) OpenOrders(ctx context.Context) ([]BrokerOrder, error) {
+	rows, err := b.openOrderRows(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return ordersFromRows(rows), nil
+}
+
+func (b *LiveBroker) openOrderRows(ctx context.Context) ([]any, error) {
 	c := b.client()
 	resp, err := c.ListOpenOrdersCtx(ctx, c.AccountID, 50)
 	if err != nil {
@@ -383,7 +392,15 @@ func (b *LiveBroker) CancelOrder(ctx context.Context, clientOrderID string) erro
 	return err
 }
 
-func (b *LiveBroker) OrderHistory(ctx context.Context, start, end string) ([]any, error) {
+func (b *LiveBroker) OrderHistory(ctx context.Context, start, end string) ([]BrokerOrder, error) {
+	rows, err := b.orderHistoryRows(ctx, start, end)
+	if err != nil {
+		return nil, err
+	}
+	return ordersFromRows(rows), nil
+}
+
+func (b *LiveBroker) orderHistoryRows(ctx context.Context, start, end string) ([]any, error) {
 	c := b.client()
 	resp, err := c.OrderHistoryCtx(ctx, c.AccountID, start, end, 100)
 	if err != nil {

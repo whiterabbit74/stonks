@@ -45,7 +45,7 @@ func TestAUD126EntryAtZeroIBSIsJournaled(t *testing.T) {
 		ClientOrderID: id, Symbol: "AAPL", Action: "entry",
 		Quantity: 1.0, DateKey: "2026-09-01", Broker: "webull",
 		CorrelationID: "c1", DecisionIBS: orderMeta{CorrelationID: "c1", IBS: 0}.decisionIBS(),
-	}, map[string]any{"status": "filled", "filled_qty": 1.0, "avg_price": 8}, "filled")
+	}, od(map[string]any{"status": "filled", "filled_qty": 1.0, "avg_price": 8}), "filled")
 	p, err := db.OpenPositionBySymbol("AAPL")
 	if err != nil || p == nil {
 		t.Fatalf("open position: %+v %v", p, err)

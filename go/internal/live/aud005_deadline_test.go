@@ -133,7 +133,7 @@ func (b *ctxBroker) PlaceMarket(ctx context.Context, symbol, side string, qty fl
 
 // OrderDetailCtx is the lookup placeMarket uses to ask "did this order land
 // anyway". A real broker's lookup fails on a cancelled context too.
-func (b *ctxBroker) OrderDetail(ctx context.Context, clientOrderID string) (map[string]any, error) {
+func (b *ctxBroker) OrderDetail(ctx context.Context, clientOrderID string) (*BrokerOrder, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

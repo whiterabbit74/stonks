@@ -30,16 +30,16 @@ func (b *rejectingBroker) CloseMarket(context.Context, string) (OrderResult, err
 func (b *rejectingBroker) Account(ctx context.Context) (map[string]any, error) {
 	return map[string]any{}, nil
 }
-func (b *rejectingBroker) Positions(ctx context.Context) ([]any, error)  { return nil, nil }
-func (b *rejectingBroker) OpenOrders(ctx context.Context) ([]any, error) { return nil, nil }
-func (b *rejectingBroker) OrderHistory(context.Context, string, string) ([]any, error) {
+func (b *rejectingBroker) Positions(ctx context.Context) ([]any, error)          { return nil, nil }
+func (b *rejectingBroker) OpenOrders(ctx context.Context) ([]BrokerOrder, error) { return nil, nil }
+func (b *rejectingBroker) OrderHistory(context.Context, string, string) ([]BrokerOrder, error) {
 	return nil, nil
 }
 func (b *rejectingBroker) CancelOrder(context.Context, string) error { return nil }
-func (b *rejectingBroker) OrderDetail(ctx context.Context, clientOrderID string) (map[string]any, error) {
+func (b *rejectingBroker) OrderDetail(ctx context.Context, clientOrderID string) (*BrokerOrder, error) {
 	for _, id := range b.placed {
 		if id == clientOrderID {
-			return map[string]any{"client_order_id": id, "status": b.status}, nil
+			return od(map[string]any{"client_order_id": id, "status": b.status}), nil
 		}
 	}
 	return nil, ErrOrderNotFound

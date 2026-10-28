@@ -214,15 +214,15 @@ func (b *rejectFirstSell) PlaceMarket(ctx context.Context, symbol, side string, 
 	return b.MemoryBroker.PlaceMarket(ctx, symbol, side, qty, cfg)
 }
 
-func (b *rejectFirstSell) OrderDetail(ctx context.Context, id string) (map[string]any, error) {
+func (b *rejectFirstSell) OrderDetail(ctx context.Context, id string) (*BrokerOrder, error) {
 	if id != "" && id == b.refusedID {
-		return map[string]any{"status": "REJECTED", "client_order_id": id}, nil
+		return od(map[string]any{"status": "REJECTED", "client_order_id": id}), nil
 	}
 	if !b.atPlacement && id != "" && id == b.firstSellID() {
 		if b.partial {
-			return map[string]any{"status": "CANCELLED", "filled_qty": 1.0, "client_order_id": id}, nil
+			return od(map[string]any{"status": "CANCELLED", "filled_qty": 1.0, "client_order_id": id}), nil
 		}
-		return map[string]any{"status": "REJECTED", "client_order_id": id}, nil
+		return od(map[string]any{"status": "REJECTED", "client_order_id": id}), nil
 	}
 	return b.MemoryBroker.OrderDetail(ctx, id)
 }

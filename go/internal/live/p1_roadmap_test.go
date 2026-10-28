@@ -125,7 +125,7 @@ func TestUnconfirmedFillPriceDoesNotUseQuote(t *testing.T) {
 	id := "oid-noprice"
 	e.recordFill(store.Tracker{
 		ClientOrderID: id, Symbol: "AAPL", Action: "entry", Quantity: 1.0, DateKey: "2026-09-01",
-	}, map[string]any{"status": "filled", "filled_qty": 1.0}, "filled")
+	}, od(map[string]any{"status": "filled", "filled_qty": 1.0}), "filled")
 	row, _ := e.DB.GetPosition(id)
 	if pv(row.EntryPrice) == 8.2 {
 		t.Fatalf("must not invent fill price from quote: %+v", row)
@@ -138,14 +138,14 @@ func TestPartialEntryUpsertsQuantity(t *testing.T) {
 	id := "oid-partial"
 	e.recordFill(store.Tracker{
 		ClientOrderID: id, Symbol: "AAPL", Action: "entry", Quantity: 10.0, DateKey: "2026-09-01",
-	}, map[string]any{"status": "filled", "filled_qty": 5.0, "avg_price": 8.2}, "filled")
+	}, od(map[string]any{"status": "filled", "filled_qty": 5.0, "avg_price": 8.2}), "filled")
 	row, _ := db.GetPosition(id)
 	if row.Quantity != 5 {
 		t.Fatalf("first partial %+v", row)
 	}
 	e.recordFill(store.Tracker{
 		ClientOrderID: id, Symbol: "AAPL", Action: "entry", Quantity: 10.0, DateKey: "2026-09-01",
-	}, map[string]any{"status": "filled", "filled_qty": 10.0, "avg_price": 8.2}, "filled")
+	}, od(map[string]any{"status": "filled", "filled_qty": 10.0, "avg_price": 8.2}), "filled")
 	row, _ = db.GetPosition(id)
 	if row.Quantity != 10 {
 		t.Fatalf("upsert %+v", row)

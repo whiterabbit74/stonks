@@ -2,6 +2,7 @@ package live
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"sync"
@@ -53,6 +54,41 @@ type OrderResult struct {
 	Ambiguous bool `json:"ambiguous,omitempty"`
 }
 
+// BrokerOrder is what the engine reads from a broker about one order. Each
+// adapter fills it from its own answer at the edge, so no broker's JSON shape
+// reaches engine logic. Raw keeps that answer for the dashboards: an order
+// marshals as the broker sent it.
+type BrokerOrder struct {
+	ClientOrderID string
+	BrokerOrderID string
+	Symbol        string
+	// Status is in NormalizeOrderStatus vocabulary; "unknown" when not reported.
+	Status string
+	// FilledQty is the cumulative executed quantity, 0 = none reported.
+	FilledQty float64
+	// FilledPrice is the average fill price, 0 = not reported.
+	FilledPrice float64
+	Raw         any
+}
+
+func (o BrokerOrder) MarshalJSON() ([]byte, error) { return json.Marshal(o.Raw) }
+
+// filledQty and filledPrice read an answer that may be missing as "nothing
+// reported".
+func (o *BrokerOrder) filledQty() float64 {
+	if o == nil {
+		return 0
+	}
+	return o.FilledQty
+}
+
+func (o *BrokerOrder) filledPrice() float64 {
+	if o == nil {
+		return 0
+	}
+	return o.FilledPrice
+}
+
 // PlaceMarketCfg is passed to PlaceMarketCfg without changing PlaceMarket(symbol,side,qty).
 type PlaceMarketCfg struct {
 	TimeInForce           string
@@ -79,9 +115,9 @@ type Broker interface {
 	CloseMarket(ctx context.Context, symbol string) (OrderResult, error)
 	Account(ctx context.Context) (map[string]any, error)
 	Positions(ctx context.Context) ([]any, error)
-	OrderDetail(ctx context.Context, clientOrderID string) (map[string]any, error)
-	OpenOrders(ctx context.Context) ([]any, error)
-	OrderHistory(ctx context.Context, start, end string) ([]any, error)
+	OrderDetail(ctx context.Context, clientOrderID string) (*BrokerOrder, error)
+	OpenOrders(ctx context.Context) ([]BrokerOrder, error)
+	OrderHistory(ctx context.Context, start, end string) ([]BrokerOrder, error)
 	CancelOrder(ctx context.Context, clientOrderID string) error
 }
 

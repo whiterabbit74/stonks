@@ -31,7 +31,7 @@ func TestExitWithoutPriceLeavesPriceAndPnLUnknown(t *testing.T) {
 	e.recordFill(store.Tracker{
 		ClientOrderID: "exit", Symbol: "AAPL", Action: "exit",
 		Quantity: 10.0, Broker: "webull", DateKey: "2026-09-01",
-	}, map[string]any{"filled_qty": 10.0}, "filled")
+	}, od(map[string]any{"filled_qty": 10.0}), "filled")
 
 	p, err := db.GetPosition("p")
 	if err != nil {
