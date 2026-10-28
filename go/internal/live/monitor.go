@@ -164,23 +164,7 @@ func (e *Engine) fillMissingLeg(positionID, broker string, qty float64) bool {
 	if positionID == "" || !(qty > 0) {
 		return false
 	}
-	// Read, decide and write in one transaction: a fill landing mid-edit would
-	// otherwise be overwritten by the copy read before it (AUD-112).
-	filled := false
-	p, err := e.DB.PatchPosition(positionID, func(p *store.Position) error {
-		if p.Status != "open" {
-			return store.ErrNoPatch
-		}
-		leg := p.Leg(broker)
-		if leg.Executed() {
-			return store.ErrNoPatch
-		}
-		leg.Qty = qty
-		p.SetLeg(broker, leg)
-		p.Quantity = p.ExecutedQty()
-		filled = true
-		return nil
-	})
+	p, filled, err := e.DB.FillMissingLeg(positionID, broker, qty)
 	if err != nil {
 		e.logAuto("journal_update_failed", "", map[string]any{
 			"op": "fill_missing_leg", "broker": broker, "id": positionID, "error": err.Error(),

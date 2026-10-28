@@ -303,13 +303,9 @@ func (d *DB) SavePosition(p Position) error {
 	return savePositionOn(d.SQL, p)
 }
 
-// ErrNoPatch aborts a PatchPosition edit and leaves the row untouched.
-var ErrNoPatch = errors.New("позиция не изменена")
-
 // PatchPosition applies edit to the stored row and writes the result back in
 // one transaction, returning the row as it now stands (nil when there is no
-// such id). edit may return ErrNoPatch to decide, on the row it was given,
-// that nothing should be written.
+// such id). An error from edit leaves the row untouched.
 //
 // Read-modify-write of a position row belongs in a transaction: the brokers
 // keep filling while an operator edits, so an edit built on a copy read a
@@ -329,9 +325,6 @@ func (d *DB) PatchPosition(id string, edit func(*Position) error) (*Position, er
 		return nil, err
 	}
 	if err := edit(&p); err != nil {
-		if errors.Is(err, ErrNoPatch) {
-			return &p, nil
-		}
 		return nil, err
 	}
 	p.ID = id
@@ -387,12 +380,13 @@ func savePositionOn(e schemaExecer, p Position) error {
 	return err
 }
 
-// DeletePhantomRow removes the position of an order the broker says never
-// existed, but only while the other broker's leg is still untouched: the row is
-// shared, and one broker's phantom must not take a real execution with it. The
-// check and the delete are one statement, so a peer entry landing right now
-// either keeps the row or is not there yet. Reports whether the row went.
-func (d *DB) DeletePhantomRow(id, broker string) (bool, error) {
+// DropPhantomLeg removes what an order the broker says never existed left in
+// the journal. The row goes with it only while the other broker's leg is still
+// untouched: the row is shared, and one broker's phantom must not take a real
+// execution with it — then only the phantom leg is cleared. The check and the
+// write are one transaction, so a peer entry landing right now either keeps the
+// row or is not there yet (AUD-112). Reports whether the row went.
+func (d *DB) DropPhantomLeg(id, broker string) (bool, error) {
 	col, err := legColumn(broker)
 	if err != nil {
 		return false, err
@@ -401,13 +395,35 @@ func (d *DB) DeletePhantomRow(id, broker string) (bool, error) {
 	if col == "webull" {
 		peer = "rh"
 	}
-	res, err := d.SQL.Exec(`DELETE FROM positions
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`DELETE FROM positions
 		WHERE id=? AND `+peer+`_qty=0 AND COALESCE(`+peer+`_entry_order_id,'')=''`, id)
 	if err != nil {
 		return false, err
 	}
 	n, err := res.RowsAffected()
-	return n > 0, err
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		return true, tx.Commit()
+	}
+	p, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=?`, id))
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	p.removeLeg(broker)
+	if err := insertMerged(tx, p); err != nil {
+		return false, err
+	}
+	return false, tx.Commit()
 }
 
 // DeletePosition removes a position permanently.
@@ -432,7 +448,7 @@ func boolInt(b bool) int {
 
 // PositionExit is the exit of a position: the signal side of it. Price is the
 // price the exit decision was taken on; a broker's actual fill goes into its
-// leg through CloseLeg.
+// leg through ExitLeg.
 type PositionExit struct {
 	Date         string
 	Price        float64
@@ -659,20 +675,6 @@ func exitLegTx(tx *sql.Tx, id, broker string, exitPrice float64, exitOrderID str
 	return err
 }
 
-// CloseLeg records what one broker actually got for its exit. It is separate
-// from ClosePosition because the two answer different questions: the journal
-// closes on the signal, a leg closes on a fill, and a position can be closed by
-// signal with no broker leg at all.
-func (d *DB) CloseLeg(id, broker string, exitPrice float64, exitOrderID string) error {
-	col, err := legColumn(broker)
-	if err != nil {
-		return err
-	}
-	_, err = d.SQL.Exec(`UPDATE positions SET `+col+`_exit_price=?, `+col+`_exit_order_id=? WHERE id=?`,
-		exitPrice, nullText(exitOrderID), id)
-	return err
-}
-
 // OpenPositionForBroker returns the open position this broker actually holds,
 // or nil. A position open in the journal with no leg at this broker is not this
 // broker's to exit — and is not a discrepancy either, just a signal nobody
@@ -692,6 +694,43 @@ func (d *DB) OpenPositionForBroker(broker string) (*Position, error) {
 		return nil, err
 	}
 	return &p, nil
+}
+
+// FillMissingLeg records what a broker demonstrably holds against an open
+// position whose leg at that broker is empty. The quantity comes from the
+// broker's own book; the price stays unknown, because nobody observed a fill.
+// Read, decide and write are one transaction (AUD-112). filled is false when
+// the row is not open or the leg already took part.
+func (d *DB) FillMissingLeg(id, broker string, qty float64) (p *Position, filled bool, err error) {
+	if _, err := legColumn(broker); err != nil {
+		return nil, false, err
+	}
+	if !(qty > 0) {
+		return nil, false, nil
+	}
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return nil, false, err
+	}
+	defer tx.Rollback()
+	row, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=?`, id))
+	if err == sql.ErrNoRows {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if row.Status != "open" || row.Leg(broker).Executed() {
+		return &row, false, nil
+	}
+	row.addToLeg(broker, qty, nil, true)
+	if err := insertMerged(tx, row); err != nil {
+		return nil, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, false, err
+	}
+	return &row, true, nil
 }
 
 // SplitPosition closes `sold` shares of an open position as a separate closed
@@ -896,9 +935,34 @@ func detachExitedLegTx(tx *sql.Tx, p *Position, broker, exitDate string) error {
 	if err := insertMerged(tx, part); err != nil {
 		return err
 	}
+	p.removeLeg(broker)
+	return nil
+}
+
+// addToLeg books newly bought shares at price into a broker's leg and the
+// position quantity. It is the one place an entry changes a leg's quantity, its
+// average price and the row's Quantity: a fill and a leg filled from the
+// broker's book both go through it. alone means the leg is this one lot, so
+// the lot's price is the leg's; otherwise the two average.
+func (p *Position) addToLeg(broker string, newly float64, price *float64, alone bool) {
+	leg := p.Leg(broker)
+	if alone || !(leg.Qty > 1e-9) {
+		if price != nil {
+			leg.EntryPrice = price
+		}
+	} else {
+		leg.EntryPrice = weightedPrice(leg.Qty, leg.EntryPrice, newly, price)
+	}
+	leg.Qty += newly
+	p.SetLeg(broker, leg)
+	p.Quantity = p.ExecutedQty()
+}
+
+// removeLeg takes a broker's leg out of the position: an exited round moved
+// to its own closed row, or a phantom order that never executed.
+func (p *Position) removeLeg(broker string) {
 	p.SetLeg(broker, BrokerLeg{})
 	p.Quantity = p.ExecutedQty()
-	return nil
 }
 
 // weightedPrice is the average price of two lots. A lot with shares and no
@@ -987,19 +1051,12 @@ func (d *DB) AttachEntry(f EntryFill) (*Position, error) {
 	}
 	// A second order into a leg that still holds is more shares, not a new
 	// count of the same ones: max(old, new) dropped the first buy and priced
-	// both at the second (AUD-180).
-	if !(leg.Qty > 1e-9) || sameOrder && leg.Qty <= f.Qty-newly+1e-9 {
-		// The leg is this order alone: its average fill is the leg's price.
-		if f.Price != nil {
-			leg.EntryPrice = f.Price
-		}
-	} else {
-		leg.EntryPrice = weightedPrice(leg.Qty, leg.EntryPrice, newly, f.Price)
-	}
-	leg.Qty += newly
+	// both at the second (AUD-180). A leg that is this order alone takes its
+	// average fill as the leg's price.
 	leg.EntryOrderID = f.OrderID
 	p.SetLeg(f.Broker, leg)
-	p.Quantity = p.ExecutedQty()
+	p.addToLeg(f.Broker, newly, f.Price, sameOrder && leg.Qty <= f.Qty-newly+1e-9)
+	leg = p.Leg(f.Broker)
 	other := p.Robinhood
 	if normalizeBroker(f.Broker) == "robinhood" {
 		other = p.Webull

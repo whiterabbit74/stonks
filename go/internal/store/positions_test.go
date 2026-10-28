@@ -315,23 +315,6 @@ func TestOpenPositionForBrokerIgnoresOtherBrokersAndSignalOnlyRows(t *testing.T)
 	}
 }
 
-func TestCloseLegWritesOnlyThatBroker(t *testing.T) {
-	db := openTestDB(t)
-	_ = db.SavePosition(Position{ID: "p1", Symbol: "V", Status: "open",
-		Webull:    BrokerLeg{Qty: 1, EntryOrderID: "w-1"},
-		Robinhood: BrokerLeg{Qty: 2, EntryOrderID: "r-1"}})
-	if err := db.CloseLeg("p1", "robinhood", 379.09, "r-2"); err != nil {
-		t.Fatal(err)
-	}
-	p, _ := db.GetPosition("p1")
-	if p.Robinhood.ExitPrice == nil || *p.Robinhood.ExitPrice != 379.09 || p.Robinhood.ExitOrderID != "r-2" {
-		t.Fatalf("robinhood leg: %+v", p.Robinhood)
-	}
-	if p.Webull.ExitPrice != nil {
-		t.Fatalf("webull leg touched: %+v", p.Webull)
-	}
-}
-
 // A fill goes into the row of its own layer. With a test buy of MSFT open,
 // the monitoring's MSFT fill goes into the monitoring's position and the test
 // row stays a test row. A monitoring fill whose position is already closed
