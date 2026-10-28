@@ -124,6 +124,7 @@ func TestListingLagBudgetMarksExecutionUnknown(t *testing.T) {
 		t.Fatalf("submit %+v", res.Broker)
 	}
 	oid := br.Orders[0].ClientOrderID
+	awaitWheels(e)
 	e.PollTrackers()
 	st := trackerStatus(t, db, oid)
 	if st != "execution_unknown" {
@@ -163,6 +164,7 @@ func TestExecutionUnknownRecoversWhenListingCatchesUp(t *testing.T) {
 		t.Fatalf("submit %+v", res.Broker)
 	}
 	oid := br.Orders[0].ClientOrderID
+	awaitWheels(e)
 	e.PollTrackers()
 	if st := trackerStatus(t, db, oid); st != "execution_unknown" {
 		t.Fatalf("status %q want execution_unknown", st)
@@ -214,6 +216,7 @@ func TestExpireStaleTrackersMarksUnresolvedAfterStaleDay(t *testing.T) {
 		t.Fatalf("submit %+v", res.Broker)
 	}
 	oid := br.Orders[0].ClientOrderID
+	awaitWheels(e)
 	e.PollTrackers()
 	if st := trackerStatus(t, db, oid); st != "execution_unknown" {
 		t.Fatalf("status %q want execution_unknown", st)
@@ -269,6 +272,7 @@ func TestResolveTrackerAbsentDeletesPhantomAndUnblocks(t *testing.T) {
 		t.Fatalf("submit %+v", res.Broker)
 	}
 	oid := br.Orders[0].ClientOrderID
+	awaitWheels(e)
 	// A phantom journal row, as submitEvaluated writes optimistically before
 	// the fill is confirmed.
 	_ = db.SavePosition(store.Position{ID: oid, Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01", EntryPrice: store.Ptr[float64](8.2), Quantity: 1.0, Webull: store.BrokerLeg{Qty: 1.0, EntryPrice: store.Ptr[float64](8.2)}})
@@ -316,6 +320,7 @@ func TestResolveTrackerFilledRecordsJournal(t *testing.T) {
 		t.Fatalf("submit %+v", res.Broker)
 	}
 	oid := br.Orders[0].ClientOrderID
+	awaitWheels(e)
 	e.PollTrackers()
 	if st := trackerStatus(t, db, oid); st != "execution_unknown" {
 		t.Fatalf("status %q want execution_unknown", st)
@@ -368,4 +373,12 @@ func trackerStatus(t *testing.T, db *store.DB, id string) string {
 	}
 	t.Fatalf("tracker %s not found", id)
 	return ""
+}
+
+// awaitWheels waits for the tracker wheel Execute started. PollTrackers skips
+// a tracker that wheel is polling at that moment, so a status read right after
+// it raced the wheel's own write. With ListingLagWait = 0 the wheel's first
+// poll marks the tracker execution_unknown and ends.
+func awaitWheels(e *Engine) {
+	e.wheelWG.Wait()
 }
