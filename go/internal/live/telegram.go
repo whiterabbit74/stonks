@@ -584,20 +584,26 @@ func brokerLabel(name string) string {
 	return name
 }
 
-// bestEntryRow returns the ticker the T-1 readings would have entered: the
-// lowest IBS strictly below its entry threshold, the same pick the engine makes.
+// bestEntryRow returns the ticker the T-1 readings would have entered. It asks
+// decideMonitor itself, with the rows in watch-list order as T-1 builds them,
+// so a tie on IBS names the same ticker in the preview and in the decision.
 func bestEntryRow(rows []t1Watch) (string, float64, bool) {
-	best := ""
-	bestIBS := 0.0
+	quotes := make([]LiveQuote, 0, len(rows))
+	symbols := make([]string, 0, len(rows))
 	for _, r := range rows {
-		if !r.eval.entry {
-			continue
-		}
-		if best == "" || r.eval.ibs < bestIBS {
-			best, bestIBS = r.sym, r.eval.ibs
-		}
+		symbols = append(symbols, r.sym)
+		quotes = append(quotes, LiveQuote{
+			Symbol:     r.sym,
+			OK:         r.eval.ok,
+			IBS:        r.eval.ibs,
+			Thresholds: QuoteThresholds{LowIBS: r.eval.low, HighIBS: r.eval.high},
+		})
 	}
-	return best, bestIBS, best != ""
+	dec := decideMonitor(quotes, symbols, "")
+	if dec["action"] != "entry" {
+		return "", 0, false
+	}
+	return fmt.Sprint(dec["symbol"]), candidateIBS(dec), true
 }
 
 type watchEval struct {

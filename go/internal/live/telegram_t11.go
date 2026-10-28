@@ -70,11 +70,12 @@ func (e *Engine) buildT11Text(minutes int, today, provider string, rows []t1Watc
 	}
 
 	// "the ticker that would be picked if the session ended now" — the lowest
-	// IBS strictly below its threshold, the same pick decideMonitor makes.
+	// IBS strictly below its threshold, picked by decideMonitor on the rows in
+	// watch-list order (not the display order) exactly as T-1 picks it.
 	// Still shown while a position is open: T-1 exits and re-enters inside one
 	// cycle, so the candidate is exactly what happens after the exit fills.
 	entryLine := "ENTRY: —"
-	if sym, ibsVal, ok := bestEntryRow(sorted); ok {
+	if sym, ibsVal, ok := bestEntryRow(rows); ok {
 		entryLine = fmt.Sprintf("🔔 ENTRY: %s · IBS %s", tgBold(sym), tgBold(formatIbsDot(ibsVal, 3)))
 	}
 	exitLine := "EXIT: —"

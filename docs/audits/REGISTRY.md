@@ -26,7 +26,7 @@
 | AUD-199 | VERIFIED, P2, fix `d368d58`, `6676adb`, `e53b1ed` | Трекеры и ответы брокеров шли через `map[string]any` и проверки строки "<nil>". | `store.Tracker`, `BrokerOrder`, `BrokerPosition`. Существующие тесты; JSON для SPA прежний (NULL → ""/0). `Account()` остался map. |
 | AUD-200 | VERIFIED, P2, fix `f5a1dcb` | Метаданные заявки жили только в памяти; рестарт между заявкой и исполнением терял correlationId и IBS выхода. | Колонки трекера (схема 10). `order_meta_restart_test.go` FAIL→PASS. |
 | AUD-201 | VERIFIED, P3, fix `6815d51`, `99984c1` | Граница «мониторинг не видит брокеров» держалась на дисциплине; `decideMonitor` получал строку журнала с ногами. | Решение в `monitor_decision.go`, вход — тикер позиции. `TestMonitorDecisionIgnoresBrokerState`, `TestMonitorDecisionFileHasNoBrokerAccess`. |
-| AUD-202 | OPEN, P3 | T-11 выбирает кандидата своей `bestEntryRow` (telegram.go), а не `decideMonitor`: при равном IBS превью T-11 и решение T-1 могут назвать разные тикеры. | Не исправлено; найдено чтением кода на `99984c1`. |
+| AUD-202 | FIXED, P3 | T-11 выбирал кандидата своей `bestEntryRow` по строкам, отсортированным по тикеру, а не `decideMonitor`: при равном IBS превью T-11 и решение T-1 могли назвать разные тикеры. | `bestEntryRow` спрашивает `decideMonitor` по строкам в порядке списка наблюдения; `TestT11CandidateMatchesDecisionOnTie` FAIL→PASS. Коммит — см. git log. |
 
 Мёртвая схема и код (без ID): `6925bb3` (`trades`/`broker_trades` не создаются в новых базах, без DROP), `5bd23b8`.
 Структура без изменения поведения: `9204c18` (app.js на 6 файлов), `84418d3` (server.go по доменам).

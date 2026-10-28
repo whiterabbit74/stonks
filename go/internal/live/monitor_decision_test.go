@@ -6,6 +6,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"mktorder.com/go/internal/store"
@@ -105,5 +107,33 @@ func TestMonitorDecisionIgnoresBrokerState(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// AUD-202: T-11 names the ticker T-1 enters. On a tie the decision keeps the
+// first in watch-list order; the preview used to sort by ticker first and name
+// the other one.
+func TestT11CandidateMatchesDecisionOnTie(t *testing.T) {
+	rows := []t1Watch{
+		{sym: "ZZZ", eval: watchEval{ok: true, entry: true, ibs: 0.05, low: 0.10, high: 0.75}},
+		{sym: "AAA", eval: watchEval{ok: true, entry: true, ibs: 0.05, low: 0.10, high: 0.75}},
+	}
+	var quotes []LiveQuote
+	for _, r := range rows {
+		quotes = append(quotes, LiveQuote{Symbol: r.sym, OK: true, IBS: r.eval.ibs, Thresholds: QuoteThresholds{LowIBS: 0.10, HighIBS: 0.75}})
+	}
+	dec := decideMonitor(quotes, []string{"ZZZ", "AAA"}, "")
+	sym, _, ok := bestEntryRow(rows)
+	if !ok || sym != dec["symbol"] {
+		t.Fatalf("T-11 picks %q, T-1 decides %v", sym, dec["symbol"])
+	}
+	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	text := New(db, &MemoryQuotes{}).buildT11Text(11, "2026-09-01", "finnhub", rows, nil, nil)
+	if !strings.Contains(text, "🔔 ENTRY: <b>ZZZ</b>") {
+		t.Fatalf("T-11 must name the ticker T-1 enters:\n%s", text)
 	}
 }
