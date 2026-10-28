@@ -911,8 +911,21 @@ type EntryFill struct {
 // what the other broker still holds. It is the same rule as a partial exit
 // (invariant K.4): the sold part is a closed row of its own, never an entry
 // written over the exit that closed it.
-func detachExitedLegTx(tx *sql.Tx, p *Position, broker, exitDate string) error {
+//
+// The part closes on the trading date of its own exit order, read from that
+// order's tracker: the re-entry date stamped an exit on a day it did not
+// happen (AUD-188). Only a leg with no tracker to ask falls back to fallbackDate,
+// the latest the exit can have been.
+func detachExitedLegTx(tx *sql.Tx, p *Position, broker, fallbackDate string) error {
 	leg := p.Leg(broker)
+	exitDate := fallbackDate
+	var tracked sql.NullString
+	switch err := tx.QueryRow(`SELECT date_key FROM order_trackers WHERE client_order_id=?`, leg.ExitOrderID).Scan(&tracked); {
+	case err == nil && tradingdate.IsValid(tracked.String):
+		exitDate = tracked.String
+	case err != nil && err != sql.ErrNoRows:
+		return err
+	}
 	// The leg's own quantity is zero since the exit, so what it held is what
 	// the row lost: the position quantity minus what the brokers still hold.
 	sold := p.Quantity - p.ExecutedQty()
