@@ -130,7 +130,7 @@ func (e *Engine) Actualize(force bool) ActualizeResult {
 		return out
 	}
 	for _, a := range alerts {
-		add(fmt.Sprint(a["symbol"]))
+		add(a.Symbol)
 	}
 	if len(symbols) == 0 {
 		out.Reason = "no_tickers"

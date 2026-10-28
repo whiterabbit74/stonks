@@ -84,8 +84,8 @@ func TestNewEMAAlertStartsTrackingInfoSide(t *testing.T) {
 		t.Fatalf("first reading: %+v", ev)
 	}
 	alerts, _ := db.ListEMAAlerts()
-	if side := fmt.Sprint(alerts[0]["infoLastSide"]); side != "above" {
-		t.Fatalf("first side not stored: %q", side)
+	if side := alerts[0].InfoLastSide; side == nil || *side != "above" {
+		t.Fatalf("first side not stored: %v", side)
 	}
 	if ev := eval(70); ev.InfoCrossing != "down" {
 		t.Fatalf("drop below the info level is not a crossing: %+v", ev)

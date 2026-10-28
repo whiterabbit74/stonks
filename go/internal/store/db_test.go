@@ -629,9 +629,9 @@ func TestEMAAlertPeriodCoercion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := map[string]any{}
+	got := map[string]int{}
 	for _, a := range list {
-		got[a["id"].(string)] = a["emaPeriod"]
+		got[a.ID] = a.EmaPeriod
 	}
 	if got["a1"] != 200 || got["a2"] != 50 {
 		t.Fatalf("emaPeriod %+v", got)

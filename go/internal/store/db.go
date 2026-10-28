@@ -1608,7 +1608,42 @@ func round6(v float64) float64 {
 	return math.Round(v*1e6) / 1e6
 }
 
-func (d *DB) ListEMAAlerts() ([]map[string]any, error) {
+// EMAAlert is one EMA deviation alert. Nil levels are unset and resolve to
+// the engine's defaults.
+type EMAAlert struct {
+	ID           string   `json:"id"`
+	Symbol       string   `json:"symbol"`
+	EmaPeriod    int      `json:"emaPeriod"`
+	LevelPct     float64  `json:"levelPct"`
+	Direction    string   `json:"direction"`
+	Enabled      bool     `json:"enabled"`
+	BuyLevelPct  *float64 `json:"buyLevelPct,omitempty"`
+	SellLevelPct *float64 `json:"sellLevelPct,omitempty"`
+	NextAction   string   `json:"nextAction,omitempty"`
+	ThresholdPct *float64 `json:"thresholdPct,omitempty"`
+	InfoLevelPct *float64 `json:"infoLevelPct,omitempty"`
+	InfoLastSide *string  `json:"infoLastSide,omitempty"`
+}
+
+// Fields is a as the map UpsertEMAAlert takes, for overlaying a patch.
+func (a EMAAlert) Fields() map[string]any {
+	m := map[string]any{"id": a.ID, "symbol": a.Symbol, "emaPeriod": a.EmaPeriod, "levelPct": a.LevelPct, "direction": a.Direction, "enabled": a.Enabled}
+	set := func(k string, v *float64) {
+		if v != nil {
+			m[k] = *v
+		}
+	}
+	set("buyLevelPct", a.BuyLevelPct)
+	set("sellLevelPct", a.SellLevelPct)
+	set("thresholdPct", a.ThresholdPct)
+	set("infoLevelPct", a.InfoLevelPct)
+	if a.NextAction != "" {
+		m["nextAction"] = a.NextAction
+	}
+	return m
+}
+
+func (d *DB) ListEMAAlerts() ([]EMAAlert, error) {
 	rows, err := d.SQL.Query(`SELECT id, symbol, ema_period, level_pct, direction, enabled,
         buy_level_pct, sell_level_pct, next_action, threshold_pct, info_level_pct, info_last_side
         FROM telegram_ema_alerts ORDER BY symbol`)
@@ -1616,44 +1651,32 @@ func (d *DB) ListEMAAlerts() ([]map[string]any, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []map[string]any
+	out := []EMAAlert{}
 	for rows.Next() {
-		var id, symbol, dir string
-		var period, level float64
+		var a EMAAlert
+		var period float64
 		var enabled int
 		var buy, sell, thr, info sql.NullFloat64
 		var next, infoSide sql.NullString
-		if err := rows.Scan(&id, &symbol, &period, &level, &dir, &enabled, &buy, &sell, &next, &thr, &info, &infoSide); err != nil {
+		if err := rows.Scan(&a.ID, &a.Symbol, &period, &a.LevelPct, &a.Direction, &enabled, &buy, &sell, &next, &thr, &info, &infoSide); err != nil {
 			return nil, err
 		}
-		row := map[string]any{"id": id, "symbol": symbol, "emaPeriod": int(period), "levelPct": level, "direction": dir, "enabled": enabled == 1}
-		if buy.Valid {
-			row["buyLevelPct"] = buy.Float64
-		}
-		if sell.Valid {
-			row["sellLevelPct"] = sell.Float64
-		}
-		if next.Valid && next.String != "" {
-			row["nextAction"] = next.String
-		}
-		if thr.Valid {
-			row["thresholdPct"] = thr.Float64
-		}
-		if info.Valid {
-			row["infoLevelPct"] = info.Float64
-		}
+		a.EmaPeriod, a.Enabled, a.NextAction = int(period), enabled == 1, next.String
+		a.BuyLevelPct, a.SellLevelPct = nullFloatPtr(buy), nullFloatPtr(sell)
+		a.ThresholdPct, a.InfoLevelPct = nullFloatPtr(thr), nullFloatPtr(info)
 		if infoSide.Valid {
-			row["infoLastSide"] = infoSide.String
+			a.InfoLastSide = &infoSide.String
 		}
-		out = append(out, row)
+		out = append(out, a)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+	return out, rows.Err()
+}
+
+func nullFloatPtr(v sql.NullFloat64) *float64 {
+	if !v.Valid {
+		return nil
 	}
-	if out == nil {
-		out = []map[string]any{}
-	}
-	return out, nil
+	return &v.Float64
 }
 
 func (d *DB) UpsertEMAAlert(rec map[string]any) (string, error) {
@@ -1712,14 +1735,14 @@ func (d *DB) UpsertEMAAlert(rec map[string]any) (string, error) {
 	return id, err
 }
 
-func (d *DB) GetEMAAlert(id string) (map[string]any, error) {
+func (d *DB) GetEMAAlert(id string) (*EMAAlert, error) {
 	list, err := d.ListEMAAlerts()
 	if err != nil {
 		return nil, err
 	}
-	for _, a := range list {
-		if fmt.Sprint(a["id"]) == id {
-			return a, nil
+	for i := range list {
+		if list[i].ID == id {
+			return &list[i], nil
 		}
 	}
 	return nil, nil

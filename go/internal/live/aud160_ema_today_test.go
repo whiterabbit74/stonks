@@ -3,6 +3,7 @@ package live
 import (
 	"fmt"
 	"math"
+	"mktorder.com/go/internal/store"
 	"testing"
 
 	"mktorder.com/go/internal/indicators"
@@ -20,7 +21,7 @@ func TestEMAAlertCountsTodayOnce(t *testing.T) {
 	_, e, _ := testEngine(t, bars)
 	live := []types.OHLC{{Date: "2026-09-01", Open: 100, High: 103, Low: 99, Close: 102, Volume: 1}}
 	e.Quotes = &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": live}}
-	ev := e.evalEMAAlert(map[string]any{"id": "1", "symbol": "AAPL", "emaPeriod": 20}, []string{"finnhub"}, "2026-09-01")
+	ev := e.evalEMAAlert(store.EMAAlert{ID: "1", Symbol: "AAPL", EmaPeriod: 20, Enabled: true}, []string{"finnhub"}, "2026-09-01")
 	closes := make([]float64, 24, 25)
 	for i := range closes {
 		closes[i] = 100
@@ -41,7 +42,7 @@ func TestEMAAlertWithoutLiveQuoteIsNoSignal(t *testing.T) {
 	bars = append(bars, types.OHLC{Date: "2026-08-31", Open: 80, High: 81, Low: 79, Close: 80, Volume: 1}) // far below the EMA
 	_, e, _ := testEngine(t, bars)
 	e.Quotes = &MemoryQuotes{} // no provider answers
-	ev := e.evalEMAAlert(map[string]any{"id": "1", "symbol": "AAPL", "emaPeriod": 20, "buyLevelPct": -5.0}, []string{"finnhub"}, "2026-09-01")
+	ev := e.evalEMAAlert(store.EMAAlert{ID: "1", Symbol: "AAPL", EmaPeriod: 20, Enabled: true, BuyLevelPct: ptrF(-5)}, []string{"finnhub"}, "2026-09-01")
 	if ev.DataOK || ev.Reached || ev.Near || ev.InfoCrossing != "" {
 		t.Fatalf("signal on a stored close: %+v", ev)
 	}
@@ -52,3 +53,5 @@ func TestEMAAlertWithoutLiveQuoteIsNoSignal(t *testing.T) {
 		t.Fatalf("decision message without a quote: %s", msg)
 	}
 }
+
+func ptrF(v float64) *float64 { return &v }

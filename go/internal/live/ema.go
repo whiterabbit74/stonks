@@ -36,7 +36,7 @@ func (e *Engine) EvaluateEMAAlerts() ([]EmaEval, error) {
 	providerChain := quoteProviderChain(ParseTradingConfig(e.AutoConfig()))
 	today := tradingdate.TodayNYSE(e.now())
 	for _, a := range alerts {
-		if enabled, ok := a["enabled"].(bool); ok && !enabled {
+		if !a.Enabled {
 			continue
 		}
 		out = append(out, e.evalEMAAlert(a, providerChain, today))
@@ -44,31 +44,28 @@ func (e *Engine) EvaluateEMAAlerts() ([]EmaEval, error) {
 	return out, nil
 }
 
-func (e *Engine) evalEMAAlert(a map[string]any, providerChain []string, today string) EmaEval {
+func (e *Engine) evalEMAAlert(a store.EMAAlert, providerChain []string, today string) EmaEval {
+	or := func(v *float64, def float64) float64 {
+		if v == nil {
+			return def
+		}
+		return *v
+	}
 	ev := EmaEval{
-		ID:           fmt.Sprint(a["id"]),
-		Symbol:       store.SafeTicker(fmt.Sprint(a["symbol"])),
-		EmaPeriod:    int(asFloat(a["emaPeriod"])),
-		BuyLevelPct:  asFloat(a["buyLevelPct"]),
-		SellLevelPct: asFloat(a["sellLevelPct"]),
-		ThresholdPct: asFloat(a["thresholdPct"]),
-		InfoLevelPct: asFloat(a["infoLevelPct"]),
-		NextAction:   strings.ToLower(fmt.Sprint(a["nextAction"])),
+		ID:           a.ID,
+		Symbol:       store.SafeTicker(a.Symbol),
+		EmaPeriod:    a.EmaPeriod,
+		BuyLevelPct:  or(a.BuyLevelPct, 15),
+		SellLevelPct: or(a.SellLevelPct, 40),
+		ThresholdPct: or(a.ThresholdPct, 0),
+		InfoLevelPct: or(a.InfoLevelPct, -20),
+		NextAction:   strings.ToLower(a.NextAction),
 	}
 	if ev.EmaPeriod != 20 {
 		ev.EmaPeriod = 200
 	}
 	if ev.ThresholdPct <= 0 {
 		ev.ThresholdPct = 0.5
-	}
-	if ev.BuyLevelPct == 0 && a["buyLevelPct"] == nil {
-		ev.BuyLevelPct = 15
-	}
-	if ev.SellLevelPct == 0 && a["sellLevelPct"] == nil {
-		ev.SellLevelPct = 40
-	}
-	if ev.InfoLevelPct == 0 && a["infoLevelPct"] == nil {
-		ev.InfoLevelPct = -20
 	}
 	if ev.NextAction != "sell" {
 		ev.NextAction = "buy"
@@ -141,7 +138,10 @@ func (e *Engine) evalEMAAlert(a map[string]any, providerChain []string, today st
 		infoSide = "above"
 	}
 	ev.InfoSide = infoSide
-	prev := fmt.Sprint(a["infoLastSide"])
+	prev := ""
+	if a.InfoLastSide != nil {
+		prev = *a.InfoLastSide
+	}
 	if prev == "above" || prev == "below" {
 		if prev != infoSide {
 			if infoSide == "below" {

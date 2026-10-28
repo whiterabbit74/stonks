@@ -21,13 +21,13 @@ func TestEMAUpsertWithoutNextActionKeepsFiredSide(t *testing.T) {
 	if err != nil || a == nil {
 		t.Fatalf("get: %v %v", a, err)
 	}
-	if a["nextAction"] != "sell" || a["enabled"] != false {
-		t.Fatalf("nextAction=%v enabled=%v, want sell/false", a["nextAction"], a["enabled"])
+	if a.NextAction != "sell" || a.Enabled {
+		t.Fatalf("nextAction=%v enabled=%v, want sell/false", a.NextAction, a.Enabled)
 	}
 	if _, err := d.UpsertEMAAlert(map[string]any{"id": id, "symbol": "SPY", "nextAction": "buy"}); err != nil {
 		t.Fatal(err)
 	}
-	if a, _ := d.GetEMAAlert(id); a["nextAction"] != "buy" {
-		t.Fatalf("an explicit nextAction must still apply, got %v", a["nextAction"])
+	if a, _ := d.GetEMAAlert(id); a.NextAction != "buy" {
+		t.Fatalf("an explicit nextAction must still apply, got %v", a.NextAction)
 	}
 }

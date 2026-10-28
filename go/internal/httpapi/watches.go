@@ -214,15 +214,16 @@ func (s *Server) handleEMAAlertPatch(w http.ResponseWriter, r *http.Request) {
 	}
 	// Кнопки шлют один ключ ({enabled} или {nextAction}): накладываем его на
 	// сохранённую строку, иначе Upsert достроит тикер NIL и уровни по умолчанию.
-	saved, gerr := s.DB.GetEMAAlert(r.PathValue("id"))
+	row0, gerr := s.DB.GetEMAAlert(r.PathValue("id"))
 	if gerr != nil {
 		writeJSON(w, 500, map[string]any{"error": gerr.Error()})
 		return
 	}
-	if saved == nil {
+	if row0 == nil {
 		writeJSON(w, 404, map[string]any{"error": "EMA alert not found"})
 		return
 	}
+	saved := row0.Fields()
 	if _, ok := body["nextAction"]; ok {
 		// levelPct/direction выводятся из nextAction, если их не прислали.
 		delete(saved, "levelPct")
