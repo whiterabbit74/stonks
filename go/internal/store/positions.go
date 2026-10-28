@@ -1027,9 +1027,9 @@ func (d *DB) AttachEntry(f EntryFill) (*Position, error) {
 	// Keyed off the open row, a replay arriving after that row was closed found
 	// nothing, and the old fill was written over the closed row or into the
 	// next entry (AUD-169).
-	newly := f.Qty // no order id, nothing to claim against
+	newly, price := f.Qty, f.Price // no order id, nothing to claim against
 	if strings.TrimSpace(f.OrderID) != "" {
-		if newly, err = claimFillTx(tx, f.OrderID, f.Qty); err != nil {
+		if newly, price, err = claimEntryFillTx(tx, f.OrderID, f.Qty, f.Price); err != nil {
 			return nil, err
 		}
 	}
@@ -1060,9 +1060,13 @@ func (d *DB) AttachEntry(f EntryFill) (*Position, error) {
 	// count of the same ones: max(old, new) dropped the first buy and priced
 	// both at the second (AUD-180). A leg that is this order alone takes its
 	// average fill as the leg's price.
+	alone := sameOrder && leg.Qty <= f.Qty-newly+1e-9
+	if alone {
+		price = f.Price
+	}
 	leg.EntryOrderID = f.OrderID
 	p.SetLeg(f.Broker, leg)
-	p.addToLeg(f.Broker, newly, f.Price, sameOrder && leg.Qty <= f.Qty-newly+1e-9)
+	p.addToLeg(f.Broker, newly, price, alone)
 	leg = p.Leg(f.Broker)
 	other := p.Robinhood
 	if normalizeBroker(f.Broker) == "robinhood" {

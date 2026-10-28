@@ -22,7 +22,7 @@ import (
 
 // SchemaVersion is the schema this binary can open and migrate to.
 // Bump it when adding a migrateSchema step. Open fails if the database is newer.
-const SchemaVersion = 8
+const SchemaVersion = 9
 
 type DB struct {
 	SQL *sql.DB
@@ -418,6 +418,13 @@ func applyPendingSchema(e schemaExecer, from int) error {
 			return err
 		}
 		if err := ensureColumn(e, "order_trackers", "last_fill_price", "REAL"); err != nil {
+			return err
+		}
+	}
+	if from < 9 {
+		// Средняя цена того накопленного исполнения, которое уже в журнале:
+		// цена новой части = прирост стоимости заявки, а не её средняя (AUD-180).
+		if err := ensureColumn(e, "order_trackers", "recorded_price", "REAL"); err != nil {
 			return err
 		}
 	}

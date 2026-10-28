@@ -464,6 +464,37 @@ func (d *DB) RecordedFillQty(clientOrderID string) float64 {
 	return recorded.Float64
 }
 
+// claimEntryFillTx is claimFillTx for a buy, which also needs the price of the
+// newly claimed part. The broker reports an order's cumulative average, so the
+// new shares cost what the order's cumulative cost grew by: the average alone
+// priced them at the whole order's average (AUD-180). A part whose earlier
+// cost is unknown has no price (invariant J).
+func claimEntryFillTx(tx *sql.Tx, clientOrderID string, filled float64, price *float64) (float64, *float64, error) {
+	var recQty, recPrice sql.NullFloat64
+	err := tx.QueryRow(`SELECT recorded_qty, recorded_price FROM order_trackers WHERE client_order_id=?`, clientOrderID).Scan(&recQty, &recPrice)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, nil, err
+	}
+	newly, err := claimFillTx(tx, clientOrderID, filled)
+	if err != nil || newly <= 0 {
+		return newly, nil, err
+	}
+	if _, err := tx.Exec(`UPDATE order_trackers SET recorded_price=? WHERE client_order_id=?`, price, clientOrderID); err != nil {
+		return 0, nil, err
+	}
+	if price == nil || !(recQty.Float64 > 1e-9) {
+		return newly, price, nil
+	}
+	if !recPrice.Valid {
+		return newly, nil, nil
+	}
+	v := (filled**price - recQty.Float64*recPrice.Float64) / newly
+	if !(v > 0) {
+		return newly, nil, nil
+	}
+	return newly, &v, nil
+}
+
 // claimFillTx is ClaimFillQty inside a caller's transaction, so the claim and
 // the journal write it authorises commit or roll back together.
 func claimFillTx(tx *sql.Tx, clientOrderID string, filled float64) (float64, error) {
