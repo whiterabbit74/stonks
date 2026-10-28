@@ -968,16 +968,22 @@ func TestPagesDriveLiveAPIs(t *testing.T) {
 }
 
 func TestNoJsonOKCannedMap(t *testing.T) {
-	raw, err := os.ReadFile("server.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	txt := string(raw)
-	if strings.Contains(txt, "live orders disabled in local Go rewrite") {
-		t.Fatal("canned execute stub still in server.go")
-	}
-	if strings.Contains(txt, `"simulated": true`) {
-		t.Fatal("canned simulate stub still in server.go")
+	files, _ := filepath.Glob("*.go")
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		txt := string(raw)
+		if strings.Contains(txt, "live orders disabled in local Go rewrite") {
+			t.Fatal("canned execute stub still in " + f)
+		}
+		if strings.Contains(txt, `"simulated": true`) {
+			t.Fatal("canned simulate stub still in " + f)
+		}
 	}
 }
 

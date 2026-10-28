@@ -314,3 +314,52 @@ func (s *Server) handleWebullRawSplits(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, out)
 }
+
+func (s *Server) handleAutoConfig(w http.ResponseWriter, r *http.Request) {
+	eng := s.liveEng()
+	cfg := eng.AutoConfig()
+	writeJSON(w, 200, map[string]any{
+		"config":              cfg,
+		"webull":              eng.WebullSummary(),
+		"state":               map[string]any{"running": eng.CanSubmit()},
+		"capitalModes":        live.CapitalModeInfos(),
+		"minEntryReservePct":  live.MinEntryReservePct,
+		"effectiveReservePct": live.EffectiveReservePct(live.ParseTradingConfig(cfg)),
+	})
+}
+
+func (s *Server) handleAutoConfigPatch(w http.ResponseWriter, r *http.Request) {
+	var body map[string]any
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
+	cfg, err := s.liveEng().PatchAutoConfigChecked(body)
+	if err != nil {
+		code := 500
+		if errors.Is(err, live.ErrInvalidAutoConfig) {
+			code = 400
+		}
+		writeJSON(w, code, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"success": true, "config": cfg})
+}
+
+func (s *Server) handleAutoEvaluate(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, s.liveEng().Evaluate())
+}
+
+func (s *Server) handlePutWebullToken(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Token     string `json:"token"`
+		ExpiresAt string `json:"expiresAt"`
+	}
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
+	if body.Token == "" {
+		writeJSON(w, 400, map[string]any{"error": "token is required"})
+		return
+	}
+	writeJSON(w, 200, s.liveEng().PutToken(body.Token, body.ExpiresAt))
+}
