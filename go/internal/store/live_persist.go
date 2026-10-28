@@ -25,7 +25,7 @@ func (d *DB) MergeOHLC(ticker string, incoming []types.OHLC) error {
 	today := tradingdate.TodayNYSE(time.Now())
 	for _, b := range incoming {
 		date := tradingdate.DateKey(b.Date)
-		if date == "" || date > today || !finitePositive(b.Open) || !finitePositive(b.High) || !finitePositive(b.Low) || !finitePositive(b.Close) || b.High < b.Low || b.Close < b.Low || b.Close > b.High {
+		if !tradingdate.IsValid(date) || date > today || !finitePositive(b.Open) || !finitePositive(b.High) || !finitePositive(b.Low) || !finitePositive(b.Close) || b.High < b.Low || b.Close < b.Low || b.Close > b.High {
 			return fmt.Errorf("invalid OHLC bar for %s", date)
 		}
 		if b.AdjClose != nil && (!finitePositive(*b.AdjClose)) {
