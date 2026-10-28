@@ -87,7 +87,7 @@ func TestAUD002UnreadableDatasetIsNotAnEmptyBacktest(t *testing.T) {
 	}
 }
 
-// AUD-002: PUT /api/datasets/{id} is a patch merged onto the stored dataset.
+// AUD-002: PUT /api/datasets/{id} is a patch onto the stored dataset.
 // A failed read looked like "nothing stored yet", and the save then dropped
 // every field the request did not carry.
 func TestAUD002UnreadableDatasetIsNotOverwrittenByPatch(t *testing.T) {
@@ -102,8 +102,15 @@ func TestAUD002UnreadableDatasetIsNotOverwrittenByPatch(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
-	if rec.Code != 500 {
-		t.Fatalf("a patch must not be saved over a dataset nobody could read: %d %s", rec.Code, rec.Body.String())
+	// Since AUD-184 a PUT without data edits the metadata only and never reads
+	// or rewrites the bars, so unreadable bars do not stop it and stay as they
+	// are.
+	if rec.Code != 200 {
+		t.Fatalf("metadata edit: %d %s", rec.Code, rec.Body.String())
+	}
+	var nulls int
+	if err := s.DB.SQL.QueryRow(`SELECT COUNT(*) FROM ohlc WHERE ticker='AAPL' AND close IS NULL`).Scan(&nulls); err != nil || nulls != 1 {
+		t.Fatalf("bars were rewritten: nulls=%d err=%v", nulls, err)
 	}
 	var name string
 	if err := s.DB.SQL.QueryRow(`SELECT name FROM dataset_meta WHERE ticker='AAPL'`).Scan(&name); err != nil {

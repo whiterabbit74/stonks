@@ -28,8 +28,8 @@ func TestDatasetPutWithoutDataLeavesBarsAlone(t *testing.T) {
 		t.Fatalf("put %d %s", rec.Code, rec.Body.String())
 	}
 	ds, _ := s.DB.GetDataset("AAA")
-	if strPtr(ds["tag"]) != "new" || strPtr(ds["companyName"]) != "Co" {
-		t.Fatalf("metadata = %v / %v", ds["tag"], ds["companyName"])
+	if strPtr(ds.Tag) != "new" || strPtr(ds.CompanyName) != "Co" {
+		t.Fatalf("metadata = %v / %v", ds.Tag, ds.CompanyName)
 	}
 
 	req = httptest.NewRequest("PUT", "/api/datasets/AAA", strings.NewReader(`{"adjustedForSplits":true}`))

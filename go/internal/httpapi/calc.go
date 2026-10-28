@@ -356,12 +356,9 @@ func (s *Server) calcBuyHold(w http.ResponseWriter, r *http.Request) {
 // a storage failure as a strategy result.
 func (s *Server) datasetBars(req calcReq) ([]types.OHLC, error) {
 	if req.Ticker != "" {
-		ds, err := s.DB.GetDataset(req.Ticker)
-		if err != nil {
-			return nil, err
-		}
-		if ds != nil {
-			return decodeBars(ds["data"]), nil
+		bars, _, err := s.DB.GetOHLC(req.Ticker)
+		if err != nil || bars != nil {
+			return bars, err
 		}
 	}
 	return nil, nil

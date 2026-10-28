@@ -39,7 +39,7 @@ func TestSavePayloadDoesNotAutoApplySplits(t *testing.T) {
 		t.Fatalf("expected detectedSplits hints, got %v", body)
 	}
 	ds, _ := s.DB.GetDataset("GOOGL")
-	bars := decodeBars(ds["data"])
+	bars := ds.Data
 	if bars[0].Close < 600 {
 		t.Fatalf("2014 pre-split was mutated on save: %v", bars[0].Close)
 	}
@@ -72,7 +72,7 @@ func TestSavePayloadUpsertsExplicitSplits(t *testing.T) {
 		t.Fatalf("explicit splits %v", evs)
 	}
 	ds, _ := s.DB.GetDataset("MSFT")
-	bars := decodeBars(ds["data"])
+	bars := ds.Data
 	if bars[0].Close != 10 {
 		t.Fatalf("save must not adjust prices, close=%v", bars[0].Close)
 	}
@@ -96,7 +96,7 @@ func TestSavePayloadDoesNotDoubleAdjust(t *testing.T) {
 		t.Fatalf("save %d %s", rec.Code, rec.Body.String())
 	}
 	ds, _ := s.DB.GetDataset("GOOGL")
-	bars := decodeBars(ds["data"])
+	bars := ds.Data
 	if bars[0].Close < 500 {
 		t.Fatalf("double-adjusted close %v", bars[0].Close)
 	}
@@ -134,7 +134,7 @@ func TestGetDatasetDoesNotHealOrPersistSplits(t *testing.T) {
 		t.Fatalf("expected detectedSplits hints: %v", ds)
 	}
 	stored, _ := s.DB.GetDataset("GOOGL")
-	if stored["adjustedForSplits"] == true {
+	if stored.AdjustedForSplits == true {
 		t.Fatal("GET persisted guessed adjustment")
 	}
 	evs, _ := s.DB.ListSplits("GOOGL")

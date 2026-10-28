@@ -379,7 +379,7 @@ func TestMergeOHLCUpsertsWithoutRewrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	upload, _ := ds["uploadDate"].(*string)
+	upload := ds.UploadDate
 	if upload == nil || *upload != "2020-06-15" {
 		gotUpload := ""
 		if upload != nil {
@@ -387,15 +387,15 @@ func TestMergeOHLCUpsertsWithoutRewrite(t *testing.T) {
 		}
 		t.Fatalf("uploadDate %q", gotUpload)
 	}
-	if ds["name"] != "Invesco QQQ" {
-		t.Fatalf("name %v", ds["name"])
+	if ds.Name != "Invesco QQQ" {
+		t.Fatalf("name %v", ds.Name)
 	}
-	if ds["dataPoints"] != 21 {
-		t.Fatalf("dataPoints %v", ds["dataPoints"])
+	if ds.DataPoints != 21 {
+		t.Fatalf("dataPoints %v", ds.DataPoints)
 	}
-	dr, _ := ds["dateRange"].(map[string]*string)
+	dr := ds.DateRange
 	if dr["from"] == nil || *dr["from"] != "2024-01-01" || dr["to"] == nil || *dr["to"] != "2024-01-21" {
-		t.Fatalf("dateRange %v", ds["dateRange"])
+		t.Fatalf("dateRange %v", ds.DateRange)
 	}
 
 	if err := db.MergeOHLC("NEW", []types.OHLC{
@@ -407,14 +407,14 @@ func TestMergeOHLCUpsertsWithoutRewrite(t *testing.T) {
 	if err != nil || fresh == nil {
 		t.Fatalf("first merge meta: %v %v", fresh, err)
 	}
-	if fresh["name"] != "NEW" {
-		t.Fatalf("new name %v", fresh["name"])
+	if fresh.Name != "NEW" {
+		t.Fatalf("new name %v", fresh.Name)
 	}
-	if fresh["dataPoints"] != 1 {
-		t.Fatalf("new dataPoints %v", fresh["dataPoints"])
+	if fresh.DataPoints != 1 {
+		t.Fatalf("new dataPoints %v", fresh.DataPoints)
 	}
-	if fresh["adjustedForSplits"] != false {
-		t.Fatalf("new adjusted %v", fresh["adjustedForSplits"])
+	if fresh.AdjustedForSplits != false {
+		t.Fatalf("new adjusted %v", fresh.AdjustedForSplits)
 	}
 }
 
@@ -595,7 +595,7 @@ func TestGetDatasetFractionalVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bars, _ := ds["data"].([]types.OHLC)
+	bars := ds.Data
 	if len(bars) != 1 || bars[0].Volume != 50602478.357868 {
 		t.Fatalf("bars %+v", bars)
 	}

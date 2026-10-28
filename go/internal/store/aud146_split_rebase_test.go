@@ -21,7 +21,7 @@ func TestAppliedSplitEditRebasesPrices(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return ds["data"].([]types.OHLC)[0].Close
+		return ds.Data[0].Close
 	}
 	pending := func() int {
 		t.Helper()
@@ -65,7 +65,7 @@ func TestAppliedSplitEditRebasesPrices(t *testing.T) {
 		t.Fatalf("delete: close %v, want raw 120", c)
 	}
 	ds, _ := db.GetDataset("X")
-	if v := ds["data"].([]types.OHLC)[0].Volume; v != 100 {
+	if v := ds.Data[0].Volume; v != 100 {
 		t.Fatalf("delete: volume %v, want raw 100", v)
 	}
 }
@@ -95,7 +95,7 @@ func TestMergeOHLCKeepsAppliedSplitBase(t *testing.T) {
 		t.Fatal(err)
 	}
 	ds, _ := db.GetDataset("X")
-	bars := ds["data"].([]types.OHLC)
+	bars := ds.Data
 	if bars[0].Close != 60 || bars[1].Close != 60 {
 		t.Fatalf("merged raw overlap broke the adjusted base: %+v", bars)
 	}
@@ -127,7 +127,7 @@ func TestDeleteAllSplitsRestoresPrices(t *testing.T) {
 		t.Fatal(err)
 	}
 	ds, _ := db.GetDataset("X")
-	if b := ds["data"].([]types.OHLC)[0]; b.Close != 120 || b.Volume != 100 {
+	if b := ds.Data[0]; b.Close != 120 || b.Volume != 100 {
 		t.Fatalf("delete all: close %v volume %v, want raw 120 and 100", b.Close, b.Volume)
 	}
 	if err := db.UpsertSplits("X", split); err != nil {
@@ -137,7 +137,7 @@ func TestDeleteAllSplitsRestoresPrices(t *testing.T) {
 		t.Fatal(err)
 	}
 	ds, _ = db.GetDataset("X")
-	if c := ds["data"].([]types.OHLC)[0].Close; c != 60 {
+	if c := ds.Data[0].Close; c != 60 {
 		t.Fatalf("re-applied split: close %v, want 60", c)
 	}
 }
@@ -167,7 +167,7 @@ func TestUpsertSplitsRepeatedDateRebasesOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	ds, _ := db.GetDataset("X")
-	if c := ds["data"].([]types.OHLC)[0].Close; c != 30 {
+	if c := ds.Data[0].Close; c != 30 {
 		t.Fatalf("repeated date: close %v, want 120/4 = 30", c)
 	}
 	list, err := db.ListSplits("X")

@@ -15,7 +15,7 @@ func (s *Server) handleApplySplits(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "Неверный идентификатор датасета"})
 		return
 	}
-	ds, err := s.DB.GetDataset(id)
+	ds, err := s.DB.GetDatasetMeta(id)
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return

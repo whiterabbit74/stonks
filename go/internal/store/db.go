@@ -562,14 +562,29 @@ func nullStr(s sql.NullString) *string {
 	return &v
 }
 
-func (d *DB) GetDataset(id string) (map[string]any, error) {
-	ticker := SafeTicker(id)
-	row := d.SQL.QueryRow(`SELECT ticker, name, company_name, upload_date, tag, data_points, date_from, date_to, adjusted_for_splits FROM dataset_meta WHERE ticker = ?`, ticker)
+// Dataset is a dataset's metadata with its bars.
+type Dataset struct {
+	DatasetMeta
+	Data []types.OHLC `json:"data"`
+}
+
+// GetDatasetMeta reads the metadata only; a missing dataset is nil, nil.
+func (d *DB) GetDatasetMeta(id string) (*DatasetMeta, error) {
+	row := d.SQL.QueryRow(`SELECT ticker, name, company_name, upload_date, tag, data_points, date_from, date_to, adjusted_for_splits FROM dataset_meta WHERE ticker = ?`, SafeTicker(id))
 	meta, err := scanMeta(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
+		return nil, err
+	}
+	return &meta, nil
+}
+
+func (d *DB) GetDataset(id string) (*Dataset, error) {
+	ticker := SafeTicker(id)
+	meta, err := d.GetDatasetMeta(ticker)
+	if err != nil || meta == nil {
 		return nil, err
 	}
 	rows, err := d.SQL.Query(`SELECT date, open, high, low, close, adj_close, volume FROM ohlc WHERE ticker = ? ORDER BY date`, ticker)
@@ -600,13 +615,7 @@ func (d *DB) GetDataset(id string) (map[string]any, error) {
 	if data == nil {
 		data = []types.OHLC{}
 	}
-	out := map[string]any{
-		"id": meta.ID, "name": meta.Name, "ticker": meta.Ticker,
-		"companyName": meta.CompanyName, "dataPoints": meta.DataPoints,
-		"dateRange": meta.DateRange, "uploadDate": meta.UploadDate, "tag": meta.Tag,
-		"adjustedForSplits": meta.AdjustedForSplits, "data": data,
-	}
-	return out, nil
+	return &Dataset{DatasetMeta: *meta, Data: data}, nil
 }
 
 func (d *DB) SaveDataset(ticker, name, company, tag string, bars []types.OHLC, adjusted bool) error {
@@ -1781,9 +1790,7 @@ func (d *DB) GetOHLC(id string) ([]types.OHLC, bool, error) {
 	if err != nil || ds == nil {
 		return nil, false, err
 	}
-	data, _ := ds["data"].([]types.OHLC)
-	adj, _ := ds["adjustedForSplits"].(bool)
-	return data, adj, nil
+	return ds.Data, ds.AdjustedForSplits, nil
 }
 
 // GetOHLCLast returns the last n bars in chronological order without loading

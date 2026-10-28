@@ -47,10 +47,10 @@ func TestApplySplitsAdjustsOHLC(t *testing.T) {
 		t.Fatalf("%v", body)
 	}
 	ds, _ := s.DB.GetDataset("AAA")
-	if ds["adjustedForSplits"] != true {
-		t.Fatalf("flag %v", ds["adjustedForSplits"])
+	if ds.AdjustedForSplits != true {
+		t.Fatalf("flag %v", ds.AdjustedForSplits)
 	}
-	out := decodeBars(ds["data"])
+	out := ds.Data
 	if out[0].Close != 50 {
 		t.Fatalf("pre-split close %v want 50", out[0].Close)
 	}
@@ -65,7 +65,7 @@ func TestApplySplitsAdjustsOHLC(t *testing.T) {
 		t.Fatalf("second apply %v", body)
 	}
 	ds2, _ := s.DB.GetDataset("AAA")
-	out2 := decodeBars(ds2["data"])
+	out2 := ds2.Data
 	if out2[0].Close != 50 {
 		t.Fatalf("re-apply mutated prices %v", out2[0].Close)
 	}
@@ -85,11 +85,11 @@ func TestPatchDatasetMetadata(t *testing.T) {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())
 	}
 	ds, _ := s.DB.GetDataset("BBB")
-	if strPtr(ds["companyName"]) != "NewCo" {
-		t.Fatalf("company %v", ds["companyName"])
+	if strPtr(ds.CompanyName) != "NewCo" {
+		t.Fatalf("company %v", ds.CompanyName)
 	}
-	if strPtr(ds["tag"]) != "core" {
-		t.Fatalf("tag %v", ds["tag"])
+	if strPtr(ds.Tag) != "core" {
+		t.Fatalf("tag %v", ds.Tag)
 	}
 }
 
@@ -943,11 +943,11 @@ func TestPutDatasetMergesMetadata(t *testing.T) {
 		t.Fatalf("put %d %s", rec.Code, rec.Body.String())
 	}
 	ds, _ := s.DB.GetDataset("AAA")
-	if strPtr(ds["companyName"]) != "OldCo" {
-		t.Fatalf("companyName wiped: %v", ds["companyName"])
+	if strPtr(ds.CompanyName) != "OldCo" {
+		t.Fatalf("companyName wiped: %v", ds.CompanyName)
 	}
-	if strPtr(ds["tag"]) != "old" {
-		t.Fatalf("tag wiped: %v", ds["tag"])
+	if strPtr(ds.Tag) != "old" {
+		t.Fatalf("tag wiped: %v", ds.Tag)
 	}
 }
 
@@ -1040,10 +1040,10 @@ func TestRefreshUsesResultsRefreshProviderAndMerges(t *testing.T) {
 		t.Fatalf("provider %v", body["provider"])
 	}
 	ds, _ := s.DB.GetDataset("AAPL")
-	if strPtr(ds["companyName"]) != "Apple" {
-		t.Fatalf("company wiped %v", ds["companyName"])
+	if strPtr(ds.CompanyName) != "Apple" {
+		t.Fatalf("company wiped %v", ds.CompanyName)
 	}
-	bars := decodeBars(ds["data"])
+	bars := ds.Data
 	if len(bars) < 2 {
 		t.Fatalf("expected merge, got %d bars", len(bars))
 	}

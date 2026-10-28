@@ -38,20 +38,21 @@ func (s *Server) handleGetDataset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать сплиты"})
 		return
 	}
-	ds["splits"] = events
-	bars := decodeBars(ds["data"])
-	hints, err := s.detectSplitHints(id, bars)
+	hints, err := s.detectSplitHints(id, ds.Data)
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать сплиты"})
 		return
 	}
-	ds["detectedSplits"] = hints
-	writeJSON(w, 200, ds)
+	writeJSON(w, 200, struct {
+		*store.Dataset
+		Splits         []types.SplitEvent `json:"splits"`
+		DetectedSplits []types.SplitEvent `json:"detectedSplits"`
+	}{ds, events, hints})
 }
 
 func (s *Server) handleDatasetMeta(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	ds, err := s.DB.GetDataset(id)
+	ds, err := s.DB.GetDatasetMeta(id)
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": "Не удалось получить метаданные датасета"})
 		return
@@ -65,26 +66,19 @@ func (s *Server) handleDatasetMeta(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать сплиты"})
 		return
 	}
-	meta := map[string]any{
-		"id": ds["id"], "name": ds["name"], "ticker": ds["ticker"],
-		"companyName": ds["companyName"], "dataPoints": ds["dataPoints"],
-		"dateRange": ds["dateRange"], "uploadDate": ds["uploadDate"], "tag": ds["tag"],
-		"adjustedForSplits": ds["adjustedForSplits"],
-		"lastDate":          lastDateFromDataset(ds),
-		"splits":            events,
-	}
-	writeJSON(w, 200, meta)
+	writeJSON(w, 200, struct {
+		*store.DatasetMeta
+		LastDate string             `json:"lastDate"`
+		Splits   []types.SplitEvent `json:"splits"`
+	}{ds, lastDateFromDataset(ds), events})
 }
 
-func lastDateFromDataset(ds map[string]any) string {
-	if dr, ok := ds["dateRange"].(map[string]*string); ok && dr != nil && dr["to"] != nil && *dr["to"] != "" {
-		return *dr["to"]
+// lastDateFromDataset is the last bar's date; both bar writers keep date_to.
+func lastDateFromDataset(ds *store.DatasetMeta) string {
+	if to := ds.DateRange["to"]; to != nil {
+		return *to
 	}
-	bars := decodeBars(ds["data"])
-	if len(bars) == 0 {
-		return ""
-	}
-	return tradingdate.DateKey(bars[len(bars)-1].Date)
+	return ""
 }
 
 func (s *Server) handleCreateDataset(w http.ResponseWriter, r *http.Request) {
@@ -128,7 +122,7 @@ func (s *Server) handlePutDataset(w http.ResponseWriter, r *http.Request) {
 	// The payload is a patch: without the stored dataset to merge into, the
 	// save drops every field the request did not carry. A failed read must not
 	// look like "there is nothing stored yet".
-	existing, err := s.DB.GetDataset(id)
+	existing, err := s.DB.GetDatasetMeta(id)
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": "Не удалось получить датасет"})
 		return
@@ -172,25 +166,15 @@ func (s *Server) putDatasetMetadata(w http.ResponseWriter, id string, payload ma
 	writeJSON(w, 200, map[string]any{"success": true, "id": id, "ticker": id})
 }
 
-func mergeDatasetPayload(existing, payload map[string]any) map[string]any {
-	out := map[string]any{}
-	for k, v := range existing {
-		if k == "data" || k == "splits" {
-			continue
-		}
-		out[k] = v
+// mergeDatasetPayload lays a PUT that carries its own bars over the stored
+// metadata, so fields the request left out keep their stored values.
+func mergeDatasetPayload(existing *store.DatasetMeta, payload map[string]any) map[string]any {
+	out := map[string]any{
+		"name": existing.Name, "adjustedForSplits": existing.AdjustedForSplits,
+		"companyName": existing.CompanyName, "tag": existing.Tag,
 	}
 	for k, v := range payload {
 		out[k] = v
-	}
-	if _, ok := payload["data"]; !ok {
-		out["data"] = existing["data"]
-	}
-	if _, ok := payload["companyName"]; !ok {
-		out["companyName"] = existing["companyName"]
-	}
-	if _, ok := payload["tag"]; !ok {
-		out["tag"] = existing["tag"]
 	}
 	return out
 }
@@ -259,7 +243,7 @@ func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "Неверный тикер"})
 		return
 	}
-	ds, err := s.DB.GetDataset(id)
+	ds, err := s.DB.GetDatasetMeta(id)
 	if err != nil || ds == nil {
 		writeJSON(w, 404, map[string]any{"error": "Датасет не найден"})
 		return
@@ -291,7 +275,11 @@ func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid refresh payload", "reasons": reasons})
 		return
 	}
-	existing := decodeBars(ds["data"])
+	existing, _, err := s.DB.GetOHLC(id)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось получить датасет"})
+		return
+	}
 	have := make(map[string]bool, len(existing))
 	for _, b := range existing {
 		have[tradingdate.DateKey(b.Date)] = true
@@ -308,8 +296,8 @@ func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	company := strPtr(ds["companyName"])
-	tag := strPtr(ds["tag"])
+	company := strPtr(ds.CompanyName)
+	tag := strPtr(ds.Tag)
 	if err := s.DB.MergeOHLC(id, hist.Rows); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
@@ -320,7 +308,7 @@ func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	updated, err := s.DB.GetDataset(id)
+	updated, err := s.DB.GetDatasetMeta(id)
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": "Данные сохранены, но датасет не перечитан"})
 		return

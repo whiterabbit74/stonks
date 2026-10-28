@@ -32,7 +32,7 @@ func TestApplyPendingSplitsIsAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bars := ds["data"].([]types.OHLC)
+	bars := ds.Data
 	if len(bars) != 1 || bars[0].Close != 100 {
 		t.Fatalf("prices must roll back with the mark: %+v", bars)
 	}
@@ -98,7 +98,7 @@ func TestSaveImportIsAtomic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bars := ds["data"].([]types.OHLC); len(bars) != 1 || bars[0].Close != 100 {
+	if bars := ds.Data; len(bars) != 1 || bars[0].Close != 100 {
 		t.Fatalf("prices must roll back with the mark: %+v", bars)
 	}
 	if _, err := db.SQL.Exec(`DROP TRIGGER no_apply`); err != nil {
