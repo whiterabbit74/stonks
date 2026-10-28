@@ -50,7 +50,7 @@ func run() error {
 	eng := live.NewProcess(db, p)
 	srv := httpapi.NewWithProviders(db, webDir, p, eng)
 	stop := scheduler.StartWith(db, scheduler.Deps{Providers: p, Live: eng}, schedulerLog)
-	stopOnce := sync.OnceFunc(stop)
+	stopOnce := stopWithin(stop, shutdownTimeout)
 	defer stopOnce()
 
 	addr := ":" + port
@@ -108,11 +108,23 @@ func serve(ctx context.Context, s httpServer, timeout time.Duration, onShutdown 
 		return nil
 	case <-ctx.Done():
 		log.Printf("shutting down (timeout %s)", timeout)
-		if onShutdown != nil {
-			onShutdown()
-		}
+		// One deadline for the scheduler and HTTP both: a hung background job
+		// must not push the HTTP shutdown past the container's grace period
+		// (AUD-191).
 		shutCtx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
+		if onShutdown != nil {
+			stopped := make(chan struct{})
+			go func() {
+				defer close(stopped)
+				onShutdown()
+			}()
+			select {
+			case <-stopped:
+			case <-shutCtx.Done():
+				log.Printf("shutdown: scheduler still busy after %s, stopping HTTP anyway", timeout)
+			}
+		}
 		if err := s.Shutdown(shutCtx); err != nil {
 			return err
 		}
@@ -121,6 +133,27 @@ func serve(ctx context.Context, s httpServer, timeout time.Duration, onShutdown 
 			return err
 		}
 		return nil
+	}
+}
+
+// stopWithin runs stop once; each call waits for it no longer than d from the
+// first call, so a deferred second call cannot hang on a stop that timed out.
+func stopWithin(stop func(), d time.Duration) func() {
+	var once sync.Once
+	done := make(chan struct{})
+	expired := make(chan struct{})
+	return func() {
+		once.Do(func() {
+			time.AfterFunc(d, func() { close(expired) })
+			go func() {
+				defer close(done)
+				stop()
+			}()
+		})
+		select {
+		case <-done:
+		case <-expired:
+		}
 	}
 }
 

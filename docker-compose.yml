@@ -28,6 +28,9 @@ services:
       # Loopback only: Caddy reaches this service on the docker network.
       - "127.0.0.1:3001:3001"
     restart: unless-stopped
+    # Above the server's 60s shutdownTimeout: the default 10s SIGKILLs it
+    # mid-shutdown (AUD-191).
+    stop_grace_period: 75s
     cap_drop:
       - ALL
     security_opt:

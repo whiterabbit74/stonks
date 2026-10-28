@@ -114,3 +114,27 @@ func TestSchedulerLogKeepsFailuresAndDropsChatter(t *testing.T) {
 		t.Fatalf("failures must reach the log:\n%s", out)
 	}
 }
+
+// AUD-191: a scheduler that never stops used to hold serve before the HTTP
+// shutdown deadline even started, and the deferred stop hung on it again.
+func TestServeBoundsHungSchedulerStop(t *testing.T) {
+	stopServe := make(chan struct{})
+	s := stubServer{
+		listen: func() error { <-stopServe; return http.ErrServerClosed },
+		shutdown: func(context.Context) error {
+			close(stopServe)
+			return nil
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	hung := stopWithin(func() { select {} }, 100*time.Millisecond)
+	start := time.Now()
+	if err := serve(ctx, s, 100*time.Millisecond, hung); err != nil {
+		t.Fatalf("serve: %v", err)
+	}
+	hung() // the deferred call in main
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("shutdown took %v with a hung scheduler", took)
+	}
+}
