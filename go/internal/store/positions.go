@@ -78,17 +78,19 @@ func (p *Position) Leg(broker string) BrokerLeg {
 	switch normalizeBroker(broker) {
 	case "robinhood":
 		return p.Robinhood
-	default:
+	case "webull":
 		return p.Webull
 	}
+	return BrokerLeg{}
 }
 
-// SetLeg writes the leg of the named broker.
+// SetLeg writes the leg of the named broker. An unknown name writes nothing:
+// every store path checks the broker through legColumn before it gets here.
 func (p *Position) SetLeg(broker string, leg BrokerLeg) {
 	switch normalizeBroker(broker) {
 	case "robinhood":
 		p.Robinhood = leg
-	default:
+	case "webull":
 		p.Webull = leg
 	}
 }
@@ -98,21 +100,28 @@ func (p *Position) SetLeg(broker string, leg BrokerLeg) {
 // this drops to zero as the legs are sold out.
 func (p *Position) ExecutedQty() float64 { return p.Webull.Qty + p.Robinhood.Qty }
 
+// normalizeBroker names a broker the journal has a leg for, "" for any other.
 func normalizeBroker(b string) string {
 	switch strings.ToLower(strings.TrimSpace(b)) {
 	case "robinhood", "rh":
 		return "robinhood"
-	default:
+	case "webull":
 		return "webull"
 	}
+	return ""
 }
 
-// legColumn is the column prefix of a broker's leg.
-func legColumn(broker string) string {
-	if normalizeBroker(broker) == "robinhood" {
-		return "rh"
+// legColumn is the column prefix of a broker's leg. An unknown broker is an
+// error, never Webull's leg: a fill written under the wrong broker is a fill
+// that broker never made.
+func legColumn(broker string) (string, error) {
+	switch normalizeBroker(broker) {
+	case "robinhood":
+		return "rh", nil
+	case "webull":
+		return "webull", nil
 	}
-	return "webull"
+	return "", fmt.Errorf("неизвестный брокер %q: в журнале нет его ноги", broker)
 }
 
 // SourceMonitor marks a position the monitoring opened by its own T-1 signal.
@@ -159,7 +168,10 @@ func (d *DB) OpenMonitorPosition(p Position) (*Position, error) {
 // source=monitor is found this way only on its own exit day. nil means the
 // shares were in nobody's leg: a leftover, not a position's exit.
 func (d *DB) ExitRowFor(symbol, broker, dateKey string) (*Position, error) {
-	col := legColumn(broker)
+	col, err := legColumn(broker)
+	if err != nil {
+		return nil, err
+	}
 	p, err := d.scanPosition(d.SQL.QueryRow(`SELECT `+positionColumns+` FROM positions
 		WHERE symbol=? AND `+col+`_qty > 0 AND (status='open' OR (is_test=0 AND (source=? OR exit_date=?)))
 		ORDER BY status='open' DESC, entry_date DESC, id LIMIT 1`, SafeTicker(symbol), SourceMonitor, dateKey))
@@ -381,8 +393,12 @@ func savePositionOn(e schemaExecer, p Position) error {
 // check and the delete are one statement, so a peer entry landing right now
 // either keeps the row or is not there yet. Reports whether the row went.
 func (d *DB) DeletePhantomRow(id, broker string) (bool, error) {
+	col, err := legColumn(broker)
+	if err != nil {
+		return false, err
+	}
 	peer := "webull"
-	if normalizeBroker(broker) == "webull" {
+	if col == "webull" {
 		peer = "rh"
 	}
 	res, err := d.SQL.Exec(`DELETE FROM positions
@@ -574,6 +590,9 @@ func (p *Position) applyPnL() {
 // after a crash between the two, and the replay saw "already booked" and never
 // closed it (AUD-133). Such a row from before the fix is closed on the replay.
 func (d *DB) ExitLeg(id, broker, exitOrderID string, exitQty float64, exit PositionExit) (p *Position, booked bool, err error) {
+	if _, err := legColumn(broker); err != nil {
+		return nil, false, err
+	}
 	tx, err := d.SQL.Begin()
 	if err != nil {
 		return nil, false, err
@@ -626,12 +645,15 @@ func (d *DB) ExitLeg(id, broker, exitOrderID string, exitQty float64, exit Posit
 // The monitoring's position takes it closed too: the signal closed the row
 // before the broker sold (invariant K.2).
 func exitLegTx(tx *sql.Tx, id, broker string, exitPrice float64, exitOrderID string) error {
-	col := legColumn(broker)
+	col, err := legColumn(broker)
+	if err != nil {
+		return err
+	}
 	var price any
 	if exitPrice > 0 {
 		price = exitPrice
 	}
-	_, err := tx.Exec(`UPDATE positions
+	_, err = tx.Exec(`UPDATE positions
 		SET `+col+`_qty=0, `+col+`_exit_price=COALESCE(?, `+col+`_exit_price), `+col+`_exit_order_id=COALESCE(?, `+col+`_exit_order_id)
 		WHERE id=? AND (status='open' OR is_test=0)`, price, nullText(exitOrderID), id)
 	return err
@@ -642,8 +664,11 @@ func exitLegTx(tx *sql.Tx, id, broker string, exitPrice float64, exitOrderID str
 // closes on the signal, a leg closes on a fill, and a position can be closed by
 // signal with no broker leg at all.
 func (d *DB) CloseLeg(id, broker string, exitPrice float64, exitOrderID string) error {
-	col := legColumn(broker)
-	_, err := d.SQL.Exec(`UPDATE positions SET `+col+`_exit_price=?, `+col+`_exit_order_id=? WHERE id=?`,
+	col, err := legColumn(broker)
+	if err != nil {
+		return err
+	}
+	_, err = d.SQL.Exec(`UPDATE positions SET `+col+`_exit_price=?, `+col+`_exit_order_id=? WHERE id=?`,
 		exitPrice, nullText(exitOrderID), id)
 	return err
 }
@@ -653,7 +678,10 @@ func (d *DB) CloseLeg(id, broker string, exitPrice float64, exitOrderID string) 
 // broker's to exit — and is not a discrepancy either, just a signal nobody
 // executed here.
 func (d *DB) OpenPositionForBroker(broker string) (*Position, error) {
-	col := legColumn(broker)
+	col, err := legColumn(broker)
+	if err != nil {
+		return nil, err
+	}
 	p, err := d.scanPosition(d.SQL.QueryRow(`SELECT ` + positionColumns +
 		` FROM positions WHERE status='open' AND is_hidden=0 AND ` + col + `_qty > 0` +
 		` ORDER BY entry_date DESC, id LIMIT 1`))
@@ -690,6 +718,10 @@ func (d *DB) SplitPosition(id, broker string, sold, exitPrice float64, exitDate,
 // as a full exit (AUD-040): refusing it left the sold shares in the open row
 // while the tracker went final and was never polled again (AUD-134).
 func (d *DB) splitPositionTx(tx *sql.Tx, id, broker string, sold float64, exitOrderID string, exit PositionExit) error {
+	col, err := legColumn(broker)
+	if err != nil {
+		return err
+	}
 	p, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=? AND status='open'`, id))
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("открытая позиция не найдена")
@@ -739,7 +771,6 @@ func (d *DB) splitPositionTx(tx *sql.Tx, id, broker string, sold float64, exitOr
 	if rest.Qty < 0 {
 		rest.Qty = 0
 	}
-	col := legColumn(broker)
 	res, err := tx.Exec(`UPDATE positions SET quantity=?, `+col+`_qty=? WHERE id=? AND status='open'`, left, rest.Qty, id)
 	if err != nil {
 		return err
@@ -760,6 +791,10 @@ func (d *DB) splitPositionTx(tx *sql.Tx, id, broker string, sold float64, exitOr
 // ever received: the replay of that same broker answer then found nothing new
 // to book and the executed part was gone for good (AUD-111).
 func (d *DB) ClaimPartialExit(clientOrderID, positionID, broker string, filled float64, exit PositionExit) (float64, error) {
+	col, err := legColumn(broker)
+	if err != nil {
+		return 0, err
+	}
 	tx, err := d.SQL.Begin()
 	if err != nil {
 		return 0, err
@@ -780,7 +815,6 @@ func (d *DB) ClaimPartialExit(clientOrderID, positionID, broker string, filled f
 		// The monitoring's row is not split by fills: its P&L is the signal's.
 		// The leg shrinks by the new part and the rest stays visible as unsold
 		// (invariant K.3).
-		col := legColumn(broker)
 		var price any
 		if exit.Price > 0 {
 			price = exit.Price
@@ -888,6 +922,9 @@ func weightedPrice(q1 float64, p1 *float64, q2 float64, p2 *float64) *float64 {
 // raced: both saw none and both inserted, and the ticker ended up with two open
 // positions — the very thing one row per position exists to prevent.
 func (d *DB) AttachEntry(f EntryFill) (*Position, error) {
+	if _, err := legColumn(f.Broker); err != nil {
+		return nil, err
+	}
 	symbol := SafeTicker(f.Symbol)
 	tx, err := d.SQL.Begin()
 	if err != nil {
