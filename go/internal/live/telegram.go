@@ -875,7 +875,9 @@ func (e *Engine) prefetchQuotes(symbols []string, chain []string, w execWindow) 
 		<-all
 		return
 	}
-	timer := time.NewTimer(max(e.timeLeft(w)-T1PlacementReserve, 0))
+	// The monitoring decides on these readings whatever the brokers' reserve
+	// leaves, so a late tick still gets one read attempt.
+	timer := time.NewTimer(max(e.timeLeft(w)-T1PlacementReserve, T1ReadAttemptTimeout))
 	defer timer.Stop()
 	select {
 	case <-all:

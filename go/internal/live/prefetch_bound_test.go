@@ -91,6 +91,9 @@ func TestPrefetchQuotesStopsAtT1Reserve(t *testing.T) {
 	bar := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	q := &slowQuotes{MemoryQuotes: MemoryQuotes{Bars: map[string][]types.OHLC{"SLOW": bar}}, delay: 3 * time.Second}
 	e := &Engine{Quotes: q}
+	oldAttempt := T1ReadAttemptTimeout
+	T1ReadAttemptTimeout = 100 * time.Millisecond
+	defer func() { T1ReadAttemptTimeout = oldAttempt }()
 	w := execWindow{ctx: context.Background(), deadline: time.Now().Add(T1PlacementReserve + 200*time.Millisecond)}
 	start := time.Now()
 	e.prefetchQuotes([]string{"SLOW"}, []string{"finnhub"}, w)
