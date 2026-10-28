@@ -33,7 +33,7 @@ func (e *Engine) EvaluateEMAAlerts() ([]EmaEval, error) {
 	// Node uses the real-time chain here too (emaAlerts.js ->
 	// fetchTodayRangeAndQuote), not resultsQuoteProvider, whose default
 	// alpha_vantage would answer with a daily bar.
-	providerChain := quoteProviderChain(e.AutoConfig())
+	providerChain := quoteProviderChain(ParseTradingConfig(e.AutoConfig()))
 	today := tradingdate.TodayNYSE(e.now())
 	for _, a := range alerts {
 		if enabled, ok := a["enabled"].(bool); ok && !enabled {

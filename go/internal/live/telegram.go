@@ -194,7 +194,7 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 			return out, nil
 		}
 	}
-	cfg := e.AutoConfig()
+	cfg := ParseTradingConfig(e.AutoConfig())
 	providerChain := quoteProviderChain(cfg)
 	var watchSyms []string
 	for _, w := range watches {
@@ -608,7 +608,7 @@ type watchEval struct {
 	warning                  IntegrityResult
 }
 
-func (e *Engine) evalWatch(sym string, w, cfg map[string]any, providerChain []string) watchEval {
+func (e *Engine) evalWatch(sym string, w map[string]any, cfg TradingConfig, providerChain []string) watchEval {
 	low, high := watchThresholds(w, cfg)
 	ev := watchEval{low: low, high: high}
 	var ibsVal, price float64

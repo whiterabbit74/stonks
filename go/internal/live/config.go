@@ -195,23 +195,88 @@ func cfgHas(cfg map[string]any, key string) bool {
 	return ok && v != nil
 }
 
-func liveLowIBS(cfg map[string]any) float64 {
-	if !cfgHas(cfg, "lowIBS") {
-		return ibs.DefaultLowIBS
-	}
-	return asFloat(cfg["lowIBS"])
+// TradingConfig is the autoTrading settings object as the trading code reads
+// it: decoded from the stored map in one place, so a mistyped key or value is
+// resolved here once instead of by an ad-hoc coercion at every read.
+//
+// Flags are strict: only a JSON boolean true is true. A string "true", a 1 or
+// a missing key is false, so a mistyped flag can only switch trading off.
+// Numbers keep asFloat's reading (a numeric string is that number, anything
+// else is 0): a garbage threshold is caught as a pair by ibs.Pair, and a
+// garbage reserve leaves the MinEntryReservePct floor in place.
+type TradingConfig struct {
+	Enabled bool
+	// Provider is the configured primary quote provider, lowercased.
+	Provider string
+	// LowIBS/HighIBS are the global pair before the per-watch overlay; it is
+	// checked as a pair only after the overlay (watchThresholds).
+	LowIBS, HighIBS        float64
+	ExecutionWindowSeconds float64
+	MaxSlippageBps         float64
+	EntryReservePct        float64
+	CapitalMode            CapitalModeInfo
+	Brokers                map[string]BrokerFlags
 }
 
-func liveHighIBS(cfg map[string]any) float64 {
-	if !cfgHas(cfg, "highIBS") {
-		return ibs.DefaultHighIBS
-	}
-	return asFloat(cfg["highIBS"])
+// BrokerFlags are one broker's autotrade switches. A broker with no entry in
+// TradingConfig.Brokers is all false.
+type BrokerFlags struct {
+	Enabled, AllowNewEntries, AllowExits bool
 }
 
-func allowFlag(cfg map[string]any, key string) bool {
-	// Missing keys are false (Node: undefined is falsy). Do not default true.
-	return asBool(cfg[key])
+// ParseTradingConfig decodes the autoTrading settings object. nil is the
+// all-off config.
+func ParseTradingConfig(cfg map[string]any) TradingConfig {
+	flag := func(m map[string]any, key string) bool {
+		b, _ := m[key].(bool)
+		return b
+	}
+	num := func(key string, fallback float64) float64 {
+		if !cfgHas(cfg, key) {
+			return fallback
+		}
+		return asFloat(cfg[key])
+	}
+	provider, _ := cfg["provider"].(string)
+	mode, _ := cfg["entryCapitalMode"].(string)
+	out := TradingConfig{
+		Enabled:                flag(cfg, "enabled"),
+		Provider:               strings.ToLower(strings.TrimSpace(provider)),
+		LowIBS:                 num("lowIBS", ibs.DefaultLowIBS),
+		HighIBS:                num("highIBS", ibs.DefaultHighIBS),
+		ExecutionWindowSeconds: num("executionWindowSeconds", 0),
+		MaxSlippageBps:         num("maxSlippageBps", 0),
+		EntryReservePct:        num("entryReservePct", 0),
+		CapitalMode:            resolveCapitalMode(mode),
+		Brokers:                map[string]BrokerFlags{},
+	}
+	// Webull predates per-broker objects: a key its nested object does not
+	// set falls back to the flat flag. Robinhood never inherits (P2-2, B-0).
+	flat := BrokerFlags{flag(cfg, "enabled"), flag(cfg, "allowNewEntries"), flag(cfg, "allowExits")}
+	brokers, _ := cfg["brokers"].(map[string]any)
+	for _, name := range []string{"webull", "robinhood"} {
+		b, ok := brokers[name].(map[string]any)
+		if !ok {
+			if name == "webull" {
+				out.Brokers[name] = flat
+			}
+			continue
+		}
+		f := BrokerFlags{flag(b, "enabled"), flag(b, "allowNewEntries"), flag(b, "allowExits")}
+		if name == "webull" {
+			if !cfgHas(b, "enabled") {
+				f.Enabled = flat.Enabled
+			}
+			if !cfgHas(b, "allowNewEntries") {
+				f.AllowNewEntries = flat.AllowNewEntries
+			}
+			if !cfgHas(b, "allowExits") {
+				f.AllowExits = flat.AllowExits
+			}
+		}
+		out.Brokers[name] = f
+	}
+	return out
 }
 
 func strOr(v any, fallback string) string {
@@ -227,8 +292,8 @@ func strOr(v any, fallback string) string {
 // cannot read into 0 — and a highIBS of 0 makes every reading an exit, which is
 // why the pair is resolved as a pair: ibs.Pair sends anything the write path
 // would have rejected back to the documented defaults.
-func watchThresholds(watch, cfg map[string]any) (low, high float64) {
-	low, high = liveLowIBS(cfg), liveHighIBS(cfg)
+func watchThresholds(watch map[string]any, cfg TradingConfig) (low, high float64) {
+	low, high = cfg.LowIBS, cfg.HighIBS
 	if watch != nil {
 		if watch["lowIBS"] != nil {
 			low = asFloat(watch["lowIBS"])
@@ -269,9 +334,8 @@ func isRealtimeQuoteProvider(p string) bool {
 // cancel the day - and the order needs no configuring, since there are only
 // ever two of them and asking the second one costs nothing when the first
 // already answered.
-func quoteProviderChain(cfg map[string]any) []string {
-	primary, _ := cfg["provider"].(string)
-	primary = strings.ToLower(strings.TrimSpace(primary))
+func quoteProviderChain(cfg TradingConfig) []string {
+	primary := cfg.Provider
 	if !isRealtimeQuoteProvider(primary) {
 		primary = realtimeQuoteProviders[0]
 	}

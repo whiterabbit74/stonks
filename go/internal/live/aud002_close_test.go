@@ -49,7 +49,7 @@ func TestAUD002UnknownCloseIsFailClosed(t *testing.T) {
 	now := time.Date(2026, 9, 1, 19, 50, 0, 0, time.UTC) // 15:50 ET
 	e.Now = func() time.Time { return now }
 
-	cfg := map[string]any{"executionWindowSeconds": 900.0}
+	cfg := ParseTradingConfig(map[string]any{"executionWindowSeconds": 900.0})
 	if _, _, err := e.sessionCloseMin(); err != nil {
 		t.Fatalf("healthy calendar must read: %v", err)
 	}

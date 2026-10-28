@@ -71,7 +71,7 @@ func TestSizeOrderCancelsPositionsReadViaContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	_, err := e.sizeOrder("exit", "AAPL", e.AutoConfig(), 10, br, windowFromCtx(ctx))
+	_, err := e.sizeOrder("exit", "AAPL", ParseTradingConfig(e.AutoConfig()), 10, br, windowFromCtx(ctx))
 	elapsed := time.Since(start)
 	if elapsed > time.Second {
 		t.Fatalf("sizeOrder took %s; must follow the execution window, not the un-cancellable Positions()", elapsed)
@@ -99,7 +99,7 @@ func TestSizeOrderCancelsAccountReadViaContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	_, err := e.sizeOrder("entry", "AAPL", e.AutoConfig(), 10, br, windowFromCtx(ctx))
+	_, err := e.sizeOrder("entry", "AAPL", ParseTradingConfig(e.AutoConfig()), 10, br, windowFromCtx(ctx))
 	elapsed := time.Since(start)
 	if elapsed > time.Second {
 		t.Fatalf("sizeOrder took %s; must follow the execution window, not the un-cancellable Account()", elapsed)
@@ -125,7 +125,7 @@ func TestSizeOrderCancelsRobinhoodAccountRead(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	_, err := e.sizeOrder("entry", "AAPL", e.AutoConfig(), 10, b, windowFromCtx(ctx))
+	_, err := e.sizeOrder("entry", "AAPL", ParseTradingConfig(e.AutoConfig()), 10, b, windowFromCtx(ctx))
 	elapsed := time.Since(start)
 	if elapsed > time.Second {
 		t.Fatalf("sizeOrder took %s; Robinhood AccountCtx must follow the attempt context", elapsed)

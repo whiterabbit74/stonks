@@ -38,11 +38,7 @@ func CapitalModeInfos() []CapitalModeInfo {
 	return out
 }
 
-func resolveCapitalMode(autoTrading map[string]any) CapitalModeInfo {
-	mode := ""
-	if autoTrading != nil {
-		mode = fmt.Sprint(autoTrading["entryCapitalMode"])
-	}
+func resolveCapitalMode(mode string) CapitalModeInfo {
 	var fallback CapitalModeInfo
 	for _, m := range capitalModeList {
 		if m.Value == mode {
@@ -163,24 +159,16 @@ func preferredAsset(root map[string]any) map[string]any {
 //
 // The SPA hint must use this, not the mode's own ReservePct (cash_100 is 0
 // on the mode and 0.50% here at defaults).
-func EffectiveReservePct(autoTrading map[string]any) float64 {
-	reservePct := resolveCapitalMode(autoTrading).ReservePct
-	if reservePct < MinEntryReservePct {
-		reservePct = MinEntryReservePct
-	}
-	if autoTrading != nil {
-		if configured := asFloat(autoTrading["entryReservePct"]); configured > reservePct {
-			reservePct = configured
-		}
-		if slippage := asFloat(autoTrading["maxSlippageBps"]) / 10000; slippage > reservePct {
-			reservePct = slippage
+func EffectiveReservePct(cfg TradingConfig) float64 {
+	// Comparisons, not max(): a NaN read from a hand-edited blob must be
+	// ignored, not propagated into the size.
+	reservePct := cfg.CapitalMode.ReservePct
+	for _, v := range []float64{MinEntryReservePct, cfg.EntryReservePct, cfg.MaxSlippageBps / 10000} {
+		if v > reservePct {
+			reservePct = v
 		}
 	}
 	return reservePct
-}
-
-func capitalModeConfig(autoTrading map[string]any) (multiplier, reservePct float64) {
-	return resolveCapitalMode(autoTrading).Multiplier, EffectiveReservePct(autoTrading)
 }
 
 // extractEntryFundsFromBalance reports the buying power an entry may use.
@@ -262,7 +250,7 @@ func sumPositionMarketValues(positions []any) (sum float64, ok bool) {
 
 var errBuyingPowerNotABase = fmt.Errorf("no residual cash for entry (buying power is not a sizing base)")
 
-func resolveEntryBalanceSizing(balancePayload any, autoTrading map[string]any, positions []any, posErr error) (entryFunds, buyingPower, baseCapital float64, err error) {
+func resolveEntryBalanceSizing(balancePayload any, cfg TradingConfig, positions []any, posErr error) (entryFunds, buyingPower, baseCapital float64, err error) {
 	root := unwrapBalance(balancePayload)
 	buyingPower = extractEntryFundsFromBalance(root)
 	cash := extractCashBalance(root)
@@ -281,7 +269,7 @@ func resolveEntryBalanceSizing(balancePayload any, autoTrading map[string]any, p
 	if !(baseCapital > 0) {
 		return 0, buyingPower, baseCapital, errBuyingPowerNotABase
 	}
-	multiplier, _ := capitalModeConfig(autoTrading)
+	multiplier := cfg.CapitalMode.Multiplier
 	entryFunds = baseCapital * multiplier
 	if buyingPower > 0 && entryFunds > buyingPower {
 		entryFunds = buyingPower
@@ -289,12 +277,9 @@ func resolveEntryBalanceSizing(balancePayload any, autoTrading map[string]any, p
 	return entryFunds, buyingPower, baseCapital, nil
 }
 
-func ComputeOrderQuantity(currentPrice float64, autoTrading map[string]any, availableFunds float64) (float64, error) {
+func ComputeOrderQuantity(currentPrice float64, cfg TradingConfig, availableFunds float64) (float64, error) {
 	if !(currentPrice > 0) {
 		return 0, fmt.Errorf("Неверная рыночная цена для расчёта количества")
-	}
-	if autoTrading == nil {
-		autoTrading = map[string]any{}
 	}
 	// One sizing rule: spend the entry funds the capital profile allows. Fixed
 	// share counts and fixed notionals used to be selectable here and had
@@ -302,7 +287,7 @@ func ComputeOrderQuantity(currentPrice float64, autoTrading map[string]any, avai
 	if !(availableFunds > 0) {
 		return 0, fmt.Errorf("Не удалось получить доступные средства для расчёта размера позиции")
 	}
-	_, reservePct := capitalModeConfig(autoTrading)
+	reservePct := EffectiveReservePct(cfg)
 	// The reserve is subtracted from availableFunds before sizing, not divided
 	// into it, so the invariant qty*price <= availableFunds*(1-reservePct)
 	// holds exactly once flooring only ever rounds the quantity down further.
@@ -366,7 +351,7 @@ func quotePrice(ev EvalResult, symbol string) float64 {
 	return 0
 }
 
-func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price float64, br Broker, w execWindow) (float64, error) {
+func (e *Engine) sizeOrder(action, symbol string, cfg TradingConfig, price float64, br Broker, w execWindow) (float64, error) {
 	if action == "exit" {
 		if br == nil {
 			return 0, fmt.Errorf("Не заданы ключи Webull")

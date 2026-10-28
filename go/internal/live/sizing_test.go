@@ -15,7 +15,7 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 			},
 		},
 	}
-	safe := map[string]any{"entryCapitalMode": "standard_safe"}
+	safe := ParseTradingConfig(map[string]any{"entryCapitalMode": "standard_safe"})
 	funds, _, _, err := resolveEntryBalanceSizing(payload, safe, nil, nil)
 	q, err := ComputeOrderQuantity(250.23, safe, funds)
 	if err != nil {
@@ -27,7 +27,7 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 
 	// cash_100 has no reserve of its own, but P1-6 floors every mode's reserve
 	// at minEntryReservePct, which trims one more share off the naive figure.
-	cash := map[string]any{"entryCapitalMode": "cash_100"}
+	cash := ParseTradingConfig(map[string]any{"entryCapitalMode": "cash_100"})
 	funds, _, _, err = resolveEntryBalanceSizing(payload, cash, nil, nil)
 	q, err = ComputeOrderQuantity(250.23, cash, funds)
 	if err != nil {
@@ -49,7 +49,7 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 			},
 		},
 	}
-	margin := map[string]any{"entryCapitalMode": "margin_200"}
+	margin := ParseTradingConfig(map[string]any{"entryCapitalMode": "margin_200"})
 	funds, _, _, err = resolveEntryBalanceSizing(marginPayload, margin, nil, nil)
 	if funds != 1000 {
 		t.Fatalf("margin funds=%v want 1000", funds)
@@ -75,7 +75,7 @@ func TestComputeOrderQuantityReservesFundsInEveryCapitalMode(t *testing.T) {
 
 	for _, info := range CapitalModeInfos() {
 		mode := info.Value
-		cfg := map[string]any{"entryCapitalMode": mode}
+		cfg := ParseTradingConfig(map[string]any{"entryCapitalMode": mode})
 		q, err := ComputeOrderQuantity(currentPrice, cfg, availableFunds)
 		if err != nil {
 			t.Fatalf("%s: %v", mode, err)
@@ -95,7 +95,7 @@ func TestComputeOrderQuantityHonorsConfiguredReserveAndSlippage(t *testing.T) {
 	const availableFunds = 10000.0
 	const currentPrice = 37.13
 
-	cfg := map[string]any{"entryCapitalMode": "cash_100", "entryReservePct": 0.05}
+	cfg := ParseTradingConfig(map[string]any{"entryCapitalMode": "cash_100", "entryReservePct": 0.05})
 	q, err := ComputeOrderQuantity(currentPrice, cfg, availableFunds)
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +104,7 @@ func TestComputeOrderQuantityHonorsConfiguredReserveAndSlippage(t *testing.T) {
 		t.Fatalf("entryReservePct not honored: qty*price=%v > %v", q*currentPrice, limit)
 	}
 
-	cfg = map[string]any{"entryCapitalMode": "cash_100", "maxSlippageBps": 300.0} // 3%
+	cfg = ParseTradingConfig(map[string]any{"entryCapitalMode": "cash_100", "maxSlippageBps": 300.0}) // 3%
 	q, err = ComputeOrderQuantity(currentPrice, cfg, availableFunds)
 	if err != nil {
 		t.Fatal(err)
@@ -117,40 +117,41 @@ func TestComputeOrderQuantityHonorsConfiguredReserveAndSlippage(t *testing.T) {
 // TestStandardSafeReserveNotWeakened locks in that P1-6's floor only ever
 // raises a mode's reserve, never lowers standard_safe's existing 2.2%.
 func TestStandardSafeReserveNotWeakened(t *testing.T) {
-	_, reservePct := capitalModeConfig(map[string]any{"entryCapitalMode": "standard_safe"})
+	reservePct := EffectiveReservePct(ParseTradingConfig(map[string]any{"entryCapitalMode": "standard_safe"}))
 	if reservePct < 0.022 {
 		t.Fatalf("standard_safe reserve weakened to %v, want >= 0.022", reservePct)
 	}
 }
 
 func TestEffectiveReservePctFormula(t *testing.T) {
-	defaults := map[string]any{"entryCapitalMode": "cash_100", "maxSlippageBps": 25.0}
+	defaults := ParseTradingConfig(map[string]any{"entryCapitalMode": "cash_100", "maxSlippageBps": 25.0})
 	got := EffectiveReservePct(defaults)
 	if got != MinEntryReservePct {
 		t.Fatalf("cash_100 at defaults reserve=%v want %v", got, MinEntryReservePct)
 	}
 
-	safe := EffectiveReservePct(map[string]any{"entryCapitalMode": "standard_safe", "maxSlippageBps": 25.0})
+	safe := EffectiveReservePct(ParseTradingConfig(map[string]any{"entryCapitalMode": "standard_safe", "maxSlippageBps": 25.0}))
 	if safe != 0.022 {
 		t.Fatalf("standard_safe reserve=%v want 0.022", safe)
 	}
 
-	raised := EffectiveReservePct(map[string]any{
+	raised := EffectiveReservePct(ParseTradingConfig(map[string]any{
 		"entryCapitalMode": "cash_100", "entryReservePct": 0.05, "maxSlippageBps": 25.0,
-	})
+	}))
 	if raised != 0.05 {
 		t.Fatalf("entryReservePct floor not applied: %v", raised)
 	}
 
-	slip := EffectiveReservePct(map[string]any{
+	slip := EffectiveReservePct(ParseTradingConfig(map[string]any{
 		"entryCapitalMode": "cash_100", "maxSlippageBps": 300.0,
-	})
+	}))
 	if slip != 0.03 {
 		t.Fatalf("maxSlippageBps floor not applied: %v", slip)
 	}
 
 	for _, info := range CapitalModeInfos() {
-		mult, reserve := capitalModeConfig(map[string]any{"entryCapitalMode": info.Value})
+		cfg := ParseTradingConfig(map[string]any{"entryCapitalMode": info.Value})
+		mult, reserve := cfg.CapitalMode.Multiplier, EffectiveReservePct(cfg)
 		if mult != info.Multiplier {
 			t.Fatalf("%s multiplier=%v want %v", info.Value, mult, info.Multiplier)
 		}

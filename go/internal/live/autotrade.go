@@ -217,13 +217,12 @@ func (e *Engine) CheckToken(token string) (map[string]any, error) {
 // system with one broker's token: a Robinhood-only setup read as stopped while
 // it was trading (same class as AUD-017).
 func (e *Engine) CanSubmit() bool {
-	cfg := e.AutoConfig()
-	enabled, _ := cfg["enabled"].(bool)
-	if !enabled {
+	cfg := ParseTradingConfig(e.AutoConfig())
+	if !cfg.Enabled {
 		return false
 	}
 	for _, nb := range e.brokerSnapshot() {
-		if on, _, _ := brokerFlags(cfg, nb.name); on && e.brokerHasWorkingToken(nb.name) {
+		if cfg.Brokers[nb.name].Enabled && e.brokerHasWorkingToken(nb.name) {
 			return true
 		}
 	}
@@ -281,7 +280,8 @@ func (e *Engine) Evaluate() EvalResult {
 // no broker anything — books, orders, health and the autotrade flags have no
 // say in the monitoring (CORE §3.1).
 func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
-	cfg := e.AutoConfig()
+	raw := e.AutoConfig()
+	cfg := ParseTradingConfig(raw)
 	today := tradingdate.TodayNYSE(e.now())
 	providerChain := quoteProviderChain(cfg)
 	// One read feeds both the universe and the per-symbol thresholds. An
@@ -294,7 +294,7 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 		return EvalResult{
 			EvaluatedAt: e.now().UTC().Format(time.RFC3339Nano),
 			TodayKey:    today,
-			AutoTrading: cfg,
+			AutoTrading: raw,
 			Symbols:     symbols,
 			Decision:    map[string]any{"action": "none", "reason": reason, "symbol": nil, "candidate": nil},
 			Live:        e.evalLive(cfg),
@@ -324,12 +324,6 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 		w := watchBy[sym]
 		if w == nil {
 			w = map[string]any{"symbol": sym}
-			if cfgHas(cfg, "lowIBS") {
-				w["lowIBS"] = cfg["lowIBS"]
-			}
-			if cfgHas(cfg, "highIBS") {
-				w["highIBS"] = cfg["highIBS"]
-			}
 		}
 		ev := e.evalWatch(sym, w, cfg, providerChain)
 		low, high := watchThresholds(w, cfg)
@@ -344,7 +338,7 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 	return EvalResult{
 		EvaluatedAt: e.now().UTC().Format(time.RFC3339Nano),
 		TodayKey:    today,
-		AutoTrading: cfg,
+		AutoTrading: raw,
 		Symbols:     symbols,
 		Quotes:      quotes,
 		OpenTrade:   open,
@@ -1095,8 +1089,8 @@ func (e *Engine) logBalanceSnapshot(corr, symbol, action string, br Broker) {
 	e.logAuto("balance_snapshot", corr, kv)
 }
 
-func (e *Engine) outsideExecutionWindow(cfg map[string]any) bool {
-	win := asFloat(cfg["executionWindowSeconds"])
+func (e *Engine) outsideExecutionWindow(cfg TradingConfig) bool {
+	win := cfg.ExecutionWindowSeconds
 	if win <= 0 {
 		return false
 	}

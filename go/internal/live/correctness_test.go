@@ -379,16 +379,16 @@ func TestReconcileFillsMissingLegFromBrokerBook(t *testing.T) {
 }
 
 func TestMissingThresholdsUseDefaults(t *testing.T) {
-	if liveLowIBS(map[string]any{}) != ibs.DefaultLowIBS {
+	if ParseTradingConfig(map[string]any{}).LowIBS != ibs.DefaultLowIBS {
 		t.Fatal("low default")
 	}
-	if h := liveHighIBS(map[string]any{}); h != ibs.DefaultHighIBS {
+	if h := ParseTradingConfig(map[string]any{}).HighIBS; h != ibs.DefaultHighIBS {
 		t.Fatalf("high default %v", h)
 	}
-	if h := liveHighIBS(map[string]any{"highIBS": 0.0}); h != 0 {
+	if h := ParseTradingConfig(map[string]any{"highIBS": 0.0}).HighIBS; h != 0 {
 		t.Fatalf("explicit highIBS 0 must be kept, got %v", h)
 	}
-	if liveLowIBS(map[string]any{"lowIBS": 0.0}) != 0 {
+	if ParseTradingConfig(map[string]any{"lowIBS": 0.0}).LowIBS != 0 {
 		t.Fatal("explicit lowIBS 0 is never-enter")
 	}
 }
@@ -405,7 +405,7 @@ func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
 	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
 	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
 	watch := map[string]any{"symbol": "AAPL"}
-	cfg := map[string]any{"lowIBS": 0.20, "highIBS": 0.80}
+	cfg := ParseTradingConfig(map[string]any{"lowIBS": 0.20, "highIBS": 0.80})
 
 	low, high := watchThresholds(watch, cfg)
 	ev := e.evalWatch("AAPL", watch, cfg, []string{"finnhub"})
@@ -437,7 +437,7 @@ func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
 		t.Fatalf("decideMonitor %+v want %s (entry=%v ibs=%v low=%v)", d, want, ev.entry, ev.ibs, low)
 	}
 
-	cfg0 := map[string]any{"lowIBS": 0.0, "highIBS": 0.80}
+	cfg0 := ParseTradingConfig(map[string]any{"lowIBS": 0.0, "highIBS": 0.80})
 	low0, _ := watchThresholds(watch, cfg0)
 	if low0 != 0 {
 		t.Fatalf("cfg lowIBS 0 kept as %v", low0)
@@ -618,7 +618,7 @@ func TestQuoteRangeMissingIsNotOk(t *testing.T) {
 		Q:    map[string]providers.QuotePayload{"AAPL": {Quote: map[string]any{"current": 8.2}}},
 	}
 	e := New(db, q)
-	ev := e.evalWatch("AAPL", map[string]any{"symbol": "AAPL"}, nil, []string{"finnhub"})
+	ev := e.evalWatch("AAPL", map[string]any{"symbol": "AAPL"}, TradingConfig{}, []string{"finnhub"})
 	if ev.ok {
 		t.Fatalf("missing range must not be ok %+v", ev)
 	}
@@ -655,7 +655,7 @@ func TestExecutionWindowFollowsShortDayClose(t *testing.T) {
 	if err != nil {
 		t.Skip("no tzdata")
 	}
-	cfg := map[string]any{"executionWindowSeconds": 90.0}
+	cfg := ParseTradingConfig(map[string]any{"executionWindowSeconds": 90.0})
 
 	at := func(hh, mm int) {
 		e.Now = func() time.Time { return time.Date(2024, 11, 29, hh, mm, 0, 0, ny) }
@@ -839,9 +839,9 @@ func TestQuoteFallsBackToTheNextProvider(t *testing.T) {
 // Providers whose quote is synthesised from daily history must never serve a
 // live decision — they would answer with yesterday's bar.
 func TestChainOnlyContainsRealtimeProviders(t *testing.T) {
-	chain := quoteProviderChain(map[string]any{
+	chain := quoteProviderChain(ParseTradingConfig(map[string]any{
 		"provider": "alpha_vantage",
-	})
+	}))
 	if chain[0] != realtimeQuoteProviders[0] {
 		t.Fatalf("a non-real-time primary must fall back to the default, got %v", chain)
 	}
@@ -983,14 +983,14 @@ func TestEvaluateReadsNoBrokerAndEntryReadsOnce(t *testing.T) {
 // every entry. The pair is resolved as a pair, so a corrupt half sends both
 // values back to the documented defaults.
 func TestWatchThresholdsRejectUnreadableHighIBS(t *testing.T) {
-	cfg := map[string]any{"lowIBS": 0.20, "highIBS": 0.80}
+	cfg := ParseTradingConfig(map[string]any{"lowIBS": 0.20, "highIBS": 0.80})
 	for _, corrupt := range []any{true, "не число", map[string]any{}} {
 		low, high := watchThresholds(map[string]any{"symbol": "AAPL", "highIBS": corrupt}, cfg)
 		if low != ibs.DefaultLowIBS || high != ibs.DefaultHighIBS {
 			t.Fatalf("highIBS %v: got %v/%v want defaults %v/%v", corrupt, low, high, ibs.DefaultLowIBS, ibs.DefaultHighIBS)
 		}
 	}
-	low, high := watchThresholds(nil, map[string]any{"lowIBS": 0.20, "highIBS": "не число"})
+	low, high := watchThresholds(nil, ParseTradingConfig(map[string]any{"lowIBS": 0.20, "highIBS": "не число"}))
 	if low != ibs.DefaultLowIBS || high != ibs.DefaultHighIBS {
 		t.Fatalf("cfg highIBS unreadable: got %v/%v", low, high)
 	}

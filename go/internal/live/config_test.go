@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"mktorder.com/go/internal/ibs"
 )
 
 func mustSanitize(t *testing.T, input, current map[string]any) map[string]any {
@@ -28,13 +30,12 @@ func TestBrokerFlagsLegacyEmptyNested(t *testing.T) {
 			"robinhood": map[string]any{},
 		},
 	}
-	en, entries, exits := brokerFlags(cfg, "webull")
-	if !en || !entries || !exits {
-		t.Fatalf("webull must inherit flat flags, got enabled=%v entries=%v exits=%v", en, entries, exits)
+	brokers := ParseTradingConfig(cfg).Brokers
+	if f := brokers["webull"]; !f.Enabled || !f.AllowNewEntries || !f.AllowExits {
+		t.Fatalf("webull must inherit flat flags, got %+v", f)
 	}
-	en, entries, exits = brokerFlags(cfg, "robinhood")
-	if en || entries || exits {
-		t.Fatalf("robinhood empty nested must be all false, got enabled=%v entries=%v exits=%v", en, entries, exits)
+	if f := brokers["robinhood"]; f.Enabled || f.AllowNewEntries || f.AllowExits {
+		t.Fatalf("robinhood empty nested must be all false, got %+v", f)
 	}
 }
 
@@ -195,5 +196,54 @@ func TestSanitizeValidatesEffectiveThresholdPair(t *testing.T) {
 	}
 	if _, err := sanitizeAutoTradingConfig(map[string]any{"lowIBS": 0.6}, map[string]any{"highIBS": 0.5}, time.Now()); err == nil {
 		t.Fatal("partial patch must be checked against the existing highIBS")
+	}
+}
+
+// A mistyped flag can only switch trading off: the engine takes a JSON true,
+// as the SPA's brokerFlag does, and nothing else. asBool used to read "true"
+// and "1" as on for the master switch and the broker flags.
+func TestTradingConfigMistypedFlagsFailClosed(t *testing.T) {
+	for _, v := range []any{"true", "1", 1.0, map[string]any{}} {
+		raw := map[string]any{
+			"enabled": v, "allowNewEntries": v, "allowExits": v,
+			"brokers": map[string]any{"robinhood": map[string]any{"enabled": v, "allowNewEntries": v, "allowExits": v}},
+		}
+		cfg := ParseTradingConfig(raw)
+		if cfg.Enabled || autotradeOn(raw) || (&Engine{}).evalLive(cfg) {
+			t.Fatalf("enabled %#v must read as off", v)
+		}
+		for name, f := range cfg.Brokers {
+			if f != (BrokerFlags{}) {
+				t.Fatalf("%s flags %#v must read as off, got %+v", name, v, f)
+			}
+		}
+		// A set nested key does not fall back to the flat one.
+		raw = map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true,
+			"brokers": map[string]any{"webull": map[string]any{"enabled": v, "allowNewEntries": v, "allowExits": v}}}
+		if f := ParseTradingConfig(raw).Brokers["webull"]; f != (BrokerFlags{}) {
+			t.Fatalf("webull nested %#v must read as off, got %+v", v, f)
+		}
+		// Saving does not promote a mistyped flat flag to a real true.
+		out := mustSanitize(t, map[string]any{}, map[string]any{"enabled": v, "allowNewEntries": v, "allowExits": v})
+		if webull, _ := out["brokers"].(map[string]any)["webull"].(map[string]any); len(webull) != 0 {
+			t.Fatalf("flat %#v copied onto webull: %+v", v, webull)
+		}
+	}
+}
+
+// An out-of-range or inverted pair in the config goes back to the documented
+// defaults as a pair, never into the decision.
+func TestTradingConfigBadThresholdsFallBackToDefaults(t *testing.T) {
+	for _, raw := range []map[string]any{
+		{"lowIBS": 1.5, "highIBS": 0.75},
+		{"lowIBS": -0.1, "highIBS": 0.75},
+		{"lowIBS": 0.1, "highIBS": 2.0},
+		{"lowIBS": 0.8, "highIBS": 0.3},
+		{"lowIBS": 0.1, "highIBS": "0.75x"},
+	} {
+		low, high := watchThresholds(nil, ParseTradingConfig(raw))
+		if low != ibs.DefaultLowIBS || high != ibs.DefaultHighIBS {
+			t.Fatalf("%v: got %v/%v want defaults", raw, low, high)
+		}
 	}
 }

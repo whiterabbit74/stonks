@@ -50,7 +50,7 @@ type BrokerRun struct {
 	Symbols []string      `json:"symbols,omitempty"` // the tickers behind Reason
 }
 
-func autotradeOn(cfg map[string]any) bool { return asBool(cfg["enabled"]) }
+func autotradeOn(cfg map[string]any) bool { return ParseTradingConfig(cfg).Enabled }
 
 // runCycle is one cycle: the monitoring's decision, then autotrade following
 // it. decided, when set, is called with the monitoring's result before any
@@ -195,8 +195,9 @@ func (e *Engine) followAt(w execWindow, ev EvalResult, trigger, corr, name strin
 		}
 		e.logAuto("execution_skipped", corr, kv)
 	}
-	enabled, allowEntries, allowExits := brokerFlags(ev.AutoTrading, name)
-	if !enabled {
+	flags := ParseTradingConfig(ev.AutoTrading).Brokers[name]
+	allowEntries, allowExits := flags.AllowNewEntries, flags.AllowExits
+	if !flags.Enabled {
 		stop("broker_disabled")
 		return
 	}
@@ -499,8 +500,8 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 		return ev
 	}
 
-	enabled, _ := ev.AutoTrading["enabled"].(bool)
-	if !enabled {
+	cfg := ParseTradingConfig(ev.AutoTrading)
+	if !cfg.Enabled {
 		ev.Broker = map[string]any{"submitted": false, "simulated": false, "error": "Autotrading is disabled", "mode": "off"}
 		e.logAuto("execution_skipped", corr, map[string]any{"symbol": symbol, "reason": "autotrading_disabled"})
 		return ev
@@ -510,7 +511,7 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 		e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": "missing_webull_credentials"})
 		return ev
 	}
-	if executionWindowApplies(trigger) && e.outsideExecutionWindow(ev.AutoTrading) {
+	if executionWindowApplies(trigger) && e.outsideExecutionWindow(cfg) {
 		ev.Broker = map[string]any{"submitted": false, "error": "outside_execution_window"}
 		e.logAuto("execution_skipped", corr, map[string]any{"symbol": symbol, "reason": "outside_execution_window", "trigger": trigger})
 		return ev
@@ -519,7 +520,7 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 	// bounded by the deadline, not by the pre-flight read budget (CORE-02).
 	w = w.forPlacement()
 	price := quotePrice(ev, symbol)
-	qty, qerr := e.sizeOrder(action, symbol, ev.AutoTrading, price, br, w)
+	qty, qerr := e.sizeOrder(action, symbol, cfg, price, br, w)
 	if qerr != nil {
 		ev.Broker = map[string]any{"submitted": false, "error": qerr.Error()}
 		e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": qerr.Error()})

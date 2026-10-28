@@ -9,7 +9,7 @@ func TestSizingVariantCCashWhenPresent(t *testing.T) {
 	payload := map[string]any{"data": map[string]any{"account_currency_assets": []any{map[string]any{
 		"currency": "USD", "cash_balance": 10000.0, "day_buying_power": 40000.0, "net_liquidation_value": 25000.0,
 	}}}}
-	funds, _, base, err := resolveEntryBalanceSizing(payload, map[string]any{"entryCapitalMode": "margin_150"}, nil, nil)
+	funds, _, base, err := resolveEntryBalanceSizing(payload, ParseTradingConfig(map[string]any{"entryCapitalMode": "margin_150"}), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func TestSizingVariantCResidualWhenCashZero(t *testing.T) {
 		"currency": "USD", "cash_balance": 0.0, "day_buying_power": 8000.0, "net_liquidation_value": 10000.0,
 	}}}}
 	pos := []any{map[string]any{"symbol": "MSFT", "quantity": 10.0, "market_value": 4000.0}}
-	funds, _, base, err := resolveEntryBalanceSizing(payload, map[string]any{"entryCapitalMode": "cash_100"}, pos, nil)
+	funds, _, base, err := resolveEntryBalanceSizing(payload, ParseTradingConfig(map[string]any{"entryCapitalMode": "cash_100"}), pos, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestSizingVariantCRefusesBuyingPowerFallback(t *testing.T) {
 		"currency": "USD", "cash_balance": 0.0, "day_buying_power": 8000.0, "net_liquidation_value": 10000.0,
 	}}}}
 	pos := []any{map[string]any{"symbol": "MSFT", "quantity": 10.0, "market_value": 10000.0}}
-	if _, _, _, err := resolveEntryBalanceSizing(payload, map[string]any{"entryCapitalMode": "cash_100"}, pos, nil); err == nil {
+	if _, _, _, err := resolveEntryBalanceSizing(payload, ParseTradingConfig(map[string]any{"entryCapitalMode": "cash_100"}), pos, nil); err == nil {
 		t.Fatal("buying-power fallback must be gone")
 	}
 }
@@ -46,7 +46,7 @@ func TestSizingVariantCPositionsFailClosed(t *testing.T) {
 	payload := map[string]any{"data": map[string]any{"account_currency_assets": []any{map[string]any{
 		"currency": "USD", "cash_balance": 0.0, "net_liquidation_value": 10000.0, "day_buying_power": 8000.0,
 	}}}}
-	if _, _, _, err := resolveEntryBalanceSizing(payload, nil, nil, errors.New("timeout")); err == nil {
+	if _, _, _, err := resolveEntryBalanceSizing(payload, TradingConfig{}, nil, errors.New("timeout")); err == nil {
 		t.Fatal("failed Positions() must refuse")
 	}
 }
@@ -57,7 +57,7 @@ func TestSizingVariantCUnsettledProceedsAreOwnCash(t *testing.T) {
 	payload := map[string]any{"data": map[string]any{"account_currency_assets": []any{map[string]any{
 		"currency": "USD", "cash_balance": 5.0, "unsettled_cash": 11995.0, "day_buying_power": 12000.0,
 	}}}}
-	funds, _, base, err := resolveEntryBalanceSizing(payload, map[string]any{"entryCapitalMode": "cash_100"}, nil, nil)
+	funds, _, base, err := resolveEntryBalanceSizing(payload, ParseTradingConfig(map[string]any{"entryCapitalMode": "cash_100"}), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestSizingVariantCUnsettledClampedByBuyingPower(t *testing.T) {
 	payload := map[string]any{"data": map[string]any{"account_currency_assets": []any{map[string]any{
 		"currency": "USD", "cash_balance": 5.0, "unsettled_cash": 11995.0, "day_buying_power": 5.0,
 	}}}}
-	funds, _, _, err := resolveEntryBalanceSizing(payload, map[string]any{"entryCapitalMode": "cash_100"}, nil, nil)
+	funds, _, _, err := resolveEntryBalanceSizing(payload, ParseTradingConfig(map[string]any{"entryCapitalMode": "cash_100"}), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

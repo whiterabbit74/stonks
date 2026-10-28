@@ -429,7 +429,7 @@ func TestBrokerCloseHandlerDispatchesByKind(t *testing.T) {
 }
 
 // TestAutotradeEntriesExitsReadsEngineTruth is B-0: settings checkboxes and
-// the autotrade tile must go through one helper that matches live.brokerFlags
+// the autotrade tile must go through one helper that matches live.ParseTradingConfig
 // (flat-key fallback only for webull; a missing robinhood key is false).
 func TestAutotradeEntriesExitsReadsEngineTruth(t *testing.T) {
 	app, err := readAppSrc(filepath.Join("..", "..", "web", "js"))
@@ -445,7 +445,7 @@ func TestAutotradeEntriesExitsReadsEngineTruth(t *testing.T) {
 	}
 	fn := jsFn(a, "brokerFlag")
 	if fn == "" {
-		t.Fatal("missing brokerFlag helper — must be a straight port of live.brokerFlags")
+		t.Fatal("missing brokerFlag helper — must be a straight port of live.ParseTradingConfig")
 	}
 	if !strings.Contains(fn, "name === 'webull'") {
 		t.Fatal("brokerFlag must fall back to flat keys only for webull")

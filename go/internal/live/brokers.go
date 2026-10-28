@@ -68,7 +68,7 @@ func fillMissingWebullFromFlat(out, flat, input map[string]any) {
 		if cfgHas(webull, f) || !cfgHas(flat, f) {
 			continue
 		}
-		val := asBool(flat[f])
+		val, _ := flat[f].(bool)
 		// A flat PATCH always includes enabled (the master toggle). Treating
 		// that as "named" wrote brokers.webull.enabled=false on the first
 		// settings save and froze the broker off: P2-2 will not overwrite a
@@ -85,42 +85,12 @@ func fillMissingWebullFromFlat(out, flat, input map[string]any) {
 	}
 }
 
-func brokerFlags(cfg map[string]any, name string) (enabled, allowEntries, allowExits bool) {
-	if cfg == nil {
-		return false, false, false
-	}
-	if brokers, _ := cfg["brokers"].(map[string]any); brokers != nil {
-		if b, ok := brokers[name].(map[string]any); ok {
-			enabled = asBool(b["enabled"])
-			allowEntries = asBool(b["allowNewEntries"])
-			allowExits = asBool(b["allowExits"])
-			if name == "webull" {
-				if !cfgHas(b, "enabled") {
-					enabled = asBool(cfg["enabled"])
-				}
-				if !cfgHas(b, "allowNewEntries") {
-					allowEntries = allowFlag(cfg, "allowNewEntries")
-				}
-				if !cfgHas(b, "allowExits") {
-					allowExits = allowFlag(cfg, "allowExits")
-				}
-			}
-			return enabled, allowEntries, allowExits
-		}
-	}
-	if name == "webull" {
-		return asBool(cfg["enabled"]), allowFlag(cfg, "allowNewEntries"), allowFlag(cfg, "allowExits")
-	}
-	return false, false, false
-}
-
-func (e *Engine) anyBrokerLive(cfg map[string]any) bool {
+func (e *Engine) anyBrokerLive(cfg TradingConfig) bool {
 	if e == nil {
 		return false
 	}
 	for _, name := range []string{"webull", "robinhood"} {
-		enabled, _, _ := brokerFlags(cfg, name)
-		if enabled && e.brokerHasWorkingToken(name) {
+		if cfg.Brokers[name].Enabled && e.brokerHasWorkingToken(name) {
 			return true
 		}
 	}
@@ -144,8 +114,8 @@ func (e *Engine) brokerHasWorkingToken(name string) bool {
 	return has
 }
 
-func (e *Engine) evalLive(cfg map[string]any) bool {
-	return asBool(cfg["enabled"]) && e.anyBrokerLive(cfg)
+func (e *Engine) evalLive(cfg TradingConfig) bool {
+	return cfg.Enabled && e.anyBrokerLive(cfg)
 }
 
 type namedBroker struct {

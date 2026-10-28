@@ -109,7 +109,7 @@ func TestPlacementReadsIgnoreTheReserve(t *testing.T) {
 		t.Fatalf("placement budget = %v, want the remaining window", got)
 	}
 	br := &MemoryBroker{Pos: []any{map[string]any{"symbol": "AAPL", "quantity": 3.0}}}
-	qty, err := e.sizeOrder("exit", "AAPL", map[string]any{}, 10, br, w.forPlacement())
+	qty, err := e.sizeOrder("exit", "AAPL", TradingConfig{}, 10, br, w.forPlacement())
 	if err != nil || qty != 3 {
 		t.Fatalf("an exit inside the reserve must still size: qty=%v err=%v", qty, err)
 	}
