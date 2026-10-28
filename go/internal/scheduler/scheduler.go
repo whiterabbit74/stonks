@@ -182,8 +182,10 @@ func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
 	return func() {
 		close(done)
 		tickWG.Wait()
-		// Фоновые задачи тика пишут в ту же базу, которую main закрывает сразу
-		// после stop(), поэтому завершение планировщика ждёт и их.
+		// Фоновые задачи тика пишут в ту же базу, которую main закрывает после
+		// stop(), поэтому завершение планировщика ждёт и их. main ждёт stop()
+		// не дольше срока остановки (AUD-191): зависшая задача потом получит
+		// «database is closed», а не держит процесс до SIGKILL.
 		backgroundWG.Wait()
 		engine(db, deps).StopTrackers()
 	}
