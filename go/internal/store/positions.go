@@ -419,7 +419,7 @@ func (d *DB) DropPhantomLeg(id, broker string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	p.removeLeg(broker)
+	p.removeLeg(broker, p.Leg(broker).Qty)
 	if err := insertMerged(tx, p); err != nil {
 		return false, err
 	}
@@ -935,7 +935,7 @@ func detachExitedLegTx(tx *sql.Tx, p *Position, broker, exitDate string) error {
 	if err := insertMerged(tx, part); err != nil {
 		return err
 	}
-	p.removeLeg(broker)
+	p.removeLeg(broker, sold)
 	return nil
 }
 
@@ -955,14 +955,21 @@ func (p *Position) addToLeg(broker string, newly float64, price *float64, alone 
 	}
 	leg.Qty += newly
 	p.SetLeg(broker, leg)
-	p.Quantity = p.ExecutedQty()
+	// Quantity is what the row bought, sold legs included: resetting it to what
+	// the legs still hold forgot the shares a peer had already sold, and the
+	// round they closed could no longer be carved out (AUD-187).
+	p.Quantity += newly
 }
 
-// removeLeg takes a broker's leg out of the position: an exited round moved
-// to its own closed row, or a phantom order that never executed.
-func (p *Position) removeLeg(broker string) {
+// removeLeg takes a broker's leg and the `bought` shares it brought out of
+// the position: an exited round moved to its own closed row, or a phantom
+// order that never executed.
+func (p *Position) removeLeg(broker string, bought float64) {
 	p.SetLeg(broker, BrokerLeg{})
-	p.Quantity = p.ExecutedQty()
+	p.Quantity -= bought
+	if p.Quantity < p.ExecutedQty() {
+		p.Quantity = p.ExecutedQty()
+	}
 }
 
 // weightedPrice is the average price of two lots. A lot with shares and no
