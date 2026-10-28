@@ -295,8 +295,12 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 	// The position's ticker is read even when it left the watchlist: the exit
 	// is always evaluated.
 	quoteSymbols := append([]string{}, symbols...)
-	if open != nil && !slices.Contains(quoteSymbols, open.Symbol) {
-		quoteSymbols = append(quoteSymbols, open.Symbol)
+	held := ""
+	if open != nil {
+		held = open.Symbol
+	}
+	if held != "" && !slices.Contains(quoteSymbols, held) {
+		quoteSymbols = append(quoteSymbols, held)
 	}
 	e.prefetchQuotes(quoteSymbols, providerChain, w)
 	var quotes []LiveQuote
@@ -322,7 +326,7 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 		Symbols:     symbols,
 		Quotes:      quotes,
 		OpenTrade:   open,
-		Decision:    decideMonitor(quotes, symbols, open),
+		Decision:    decideMonitor(quotes, symbols, held),
 		Live:        e.evalLive(cfg),
 	}
 }

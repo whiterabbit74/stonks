@@ -11,11 +11,11 @@ func TestEntryCandidateStaysInsideWatchlist(t *testing.T) {
 		{Symbol: "QQQ", OK: true, IBS: 0.05, CurrentPrice: 100.0, Thresholds: th},
 		{Symbol: "XYZ", OK: true, IBS: 0.02, CurrentPrice: 10.0, Thresholds: th},
 	}
-	d := decideMonitor(quotes, []string{"QQQ"}, nil)
+	d := decideMonitor(quotes, []string{"QQQ"}, "")
 	if d["action"] != "entry" || d["symbol"] != "QQQ" {
 		t.Fatalf("decideMonitor %+v want entry QQQ", d)
 	}
-	d = decideMonitor(quotes[1:], []string{"QQQ"}, nil)
+	d = decideMonitor(quotes[1:], []string{"QQQ"}, "")
 	if d["action"] != "none" {
 		t.Fatalf("decideMonitor %+v want none for unwatched candidate", d)
 	}

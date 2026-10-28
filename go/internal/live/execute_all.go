@@ -111,7 +111,7 @@ func (e *Engine) applyMonitor(ev EvalResult, dry bool, corr string) MonitorStep 
 		}
 		st.Exit = q
 		e.logAuto("monitor_exit", corr, map[string]any{"symbol": q.Symbol, "ibs": q.IBS, "price": q.CurrentPrice, "dryRun": dry})
-		dec = decideMonitor(ev.Quotes, ev.Symbols, nil)
+		dec = decideMonitor(ev.Quotes, ev.Symbols, "")
 	}
 	if action, _ := dec["action"].(string); action == "entry" {
 		q, _ := dec["candidate"].(*LiveQuote)

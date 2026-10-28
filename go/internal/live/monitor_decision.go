@@ -7,7 +7,8 @@ import (
 
 // The monitoring's decision (CORE §3.1). Everything in this file is a plain
 // function of the readings, the watch list and the monitoring's own position:
-// no Engine, no broker, no autotrade config can be reached from here.
+// no Engine, no broker, no autotrade config can be reached from here, and
+// TestMonitorDecisionFileHasNoBrokerAccess keeps it that way.
 
 // LiveQuote is one ticker's reading in an evaluation cycle: the IBS the
 // decision compares, the thresholds it compares against, and whether the
@@ -30,20 +31,23 @@ type QuoteThresholds struct {
 
 // decideMonitor is the monitoring's decision on one set of readings: exit its
 // position on the exit signal, otherwise — holding nothing — enter the watched
-// ticker with the lowest IBS strictly below its threshold.
-func decideMonitor(quotes []LiveQuote, symbols []string, open *store.Position) map[string]any {
+// ticker with the lowest IBS strictly below its threshold. held is the ticker
+// of the monitoring's position, "" when it holds nothing: the ticker and not
+// the journal row, because the row carries the brokers' legs, and nothing a
+// broker did may reach the decision (CORE §3.1).
+func decideMonitor(quotes []LiveQuote, symbols []string, held string) map[string]any {
 	none := func(reason string, symbol any, cand any) map[string]any {
 		return map[string]any{"action": "none", "reason": reason, "symbol": symbol, "candidate": cand}
 	}
-	if open != nil {
-		row := exitSignalQuote(quotes, open.Symbol)
+	if held != "" {
+		row := exitSignalQuote(quotes, held)
 		if exitSignalFired(row) {
-			return map[string]any{"action": "exit", "reason": "ibs_exit", "symbol": open.Symbol, "candidate": row}
+			return map[string]any{"action": "exit", "reason": "ibs_exit", "symbol": held, "candidate": row}
 		}
 		if row == nil {
-			return none("open_position_quote_unavailable", open.Symbol, nil)
+			return none("open_position_quote_unavailable", held, nil)
 		}
-		return none("exit_threshold_not_reached", open.Symbol, row)
+		return none("exit_threshold_not_reached", held, row)
 	}
 	if len(symbols) == 0 {
 		return none("empty_symbol_universe", nil, nil)

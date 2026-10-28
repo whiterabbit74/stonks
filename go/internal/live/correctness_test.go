@@ -428,7 +428,7 @@ func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
 		IBS:        ev.ibs,
 		Thresholds: QuoteThresholds{LowIBS: low, HighIBS: high},
 	}}
-	d := decideMonitor(quotes, []string{"AAPL"}, nil)
+	d := decideMonitor(quotes, []string{"AAPL"}, "")
 	want := "none"
 	if ev.entry {
 		want = "entry"
@@ -1005,7 +1005,7 @@ func TestDecideMonitorIgnoresZeroHighIBS(t *testing.T) {
 		IBS:        0.5,
 		Thresholds: QuoteThresholds{LowIBS: 0.1, HighIBS: 0},
 	}}
-	d := decideMonitor(quotes, []string{"AAPL"}, &store.Position{Status: "open", Symbol: "AAPL"})
+	d := decideMonitor(quotes, []string{"AAPL"}, "AAPL")
 	if fmt.Sprint(d["action"]) != "none" || fmt.Sprint(d["reason"]) != "exit_threshold_not_reached" {
 		t.Fatalf("IBS 0.5 with a zero highIBS must not exit: %+v", d)
 	}
