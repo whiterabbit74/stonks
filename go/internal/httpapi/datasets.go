@@ -75,6 +75,9 @@ func (s *Server) handleDatasetMeta(w http.ResponseWriter, r *http.Request) {
 
 // lastDateFromDataset is the last bar's date; both bar writers keep date_to.
 func lastDateFromDataset(ds *store.DatasetMeta) string {
+	if ds == nil { // deleted while a refresh was merging
+		return ""
+	}
 	if to := ds.DateRange["to"]; to != nil {
 		return *to
 	}
@@ -263,6 +266,12 @@ func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "У датасета нет последней даты"})
 		return
 	}
+	// Unreadable bars fail before the provider is asked, not after its quota is spent.
+	existing, _, err := s.DB.GetOHLC(id)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось получить датасет"})
+		return
+	}
 	startDate := tradingdate.AddDays(lastDate, -7)
 	startTs := tradingDateUnix(startDate)
 	endTs := time.Now().Unix()
@@ -273,11 +282,6 @@ func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 	}
 	if reasons := validateBars(hist.Rows); len(reasons) > 0 && len(hist.Rows) > 0 {
 		writeJSON(w, 400, map[string]any{"error": "invalid refresh payload", "reasons": reasons})
-		return
-	}
-	existing, _, err := s.DB.GetOHLC(id)
-	if err != nil {
-		writeJSON(w, 500, map[string]any{"error": "Не удалось получить датасет"})
 		return
 	}
 	have := make(map[string]bool, len(existing))

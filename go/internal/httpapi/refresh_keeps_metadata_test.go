@@ -41,3 +41,36 @@ func TestRefreshDoesNotRewriteMetadata(t *testing.T) {
 		t.Fatalf("bars %d tag %v company %v", len(ds.Data), *ds.Tag, *ds.CompanyName)
 	}
 }
+
+// Review of c2298be: refresh reads the stored bars after the metadata-only
+// lookup; unreadable bars must fail before the provider is called.
+func TestRefreshUnreadableBarsDoesNotCallProvider(t *testing.T) {
+	s := testServer(t, "")
+	bar := []types.OHLC{{Date: "2024-01-05", Open: 10, High: 12, Low: 9, Close: 11, Volume: 100}}
+	if err := s.DB.SaveDataset("AAPL", "AAPL", "Apple", "core", bar, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.SQL.Exec(`UPDATE ohlc SET close = NULL WHERE ticker = 'AAPL'`); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	av := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true }))
+	t.Cleanup(av.Close)
+	s.Providers = &providers.Client{HTTP: av.Client(), AlphaKey: "k", AlphaBase: av.URL}
+	st := s.DB.Settings()
+	st["resultsRefreshProvider"] = "alpha_vantage"
+	if err := s.DB.SaveSettings(st); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest("POST", "/api/datasets/AAPL/refresh", nil))
+	if rec.Code != 500 || called {
+		t.Fatalf("code %d, provider called %v", rec.Code, called)
+	}
+}
+
+func TestLastDateOfDeletedDatasetIsEmpty(t *testing.T) {
+	if got := lastDateFromDataset(nil); got != "" {
+		t.Fatalf("got %q", got)
+	}
+}
