@@ -22,6 +22,16 @@
 Общий корень AUD-184/192: обработчик «прочитать → слить → записать строку целиком» вне транзакции.
 Образец правильного пути — `store.UpdateSettingsKeys` (AUD-177). Другие PATCH-обработчики
 (`watch`, `splits`, `trading-calendar/day`) на этот шаблон не проверялись.
+| ID | Статус | Описание | Исправление / проверка |
+| --- | --- | --- | --- |
+| AUD-206 | FIXED, P3, fix `3fcad45` | Refresh датасета после `MergeOHLC` записывал обратно `tag`/`companyName`, прочитанные до запроса к провайдеру: правка метаданных во время refresh откатывалась. Та же гонка, что AUD-184. Найдено при типизации датасетов. | Запись убрана (`MergeOHLC` метаданные не трогает). `TestRefreshDoesNotRewriteMetadata` FAIL (500 от триггера) → PASS. |
+
+Типизация без изменения поведения: `1b79997` (`store.Watch`), `1eca1ae` (`store.EMAAlert`), `c2298be`
+(`store.Dataset`, `GetDatasetMeta` — метаданные, refresh, apply-splits и PUT больше не читают все бары).
+JSON для SPA прежний. На `map[string]any` остались: входы патчей на границе HTTP (`UpsertWatch`,
+`PatchWatch`, `UpsertEMAAlert`), блоб настроек (читается через `TradingConfig`) и логи автоторговли.
+Проверка на `3fcad45`: `go vet`, `go test ./...` в трёх зонах, `-race` для live/scheduler/store/httpapi/cmd/server.
+
 Остаток ревью без исправления: чтение EMA после цикла T-1 не ограничено сроком (держит итоговый
 отчёт, не решение и не заявки); PUT датасета без `data` сузил контракт для внешних клиентов (SPA его не вызывает).
 
