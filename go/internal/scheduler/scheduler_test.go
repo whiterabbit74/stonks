@@ -592,7 +592,7 @@ func TestTickT1SecondTickDoesNotPlace(t *testing.T) {
 
 func TestStartTickUsesWallClock(t *testing.T) {
 	fn := sourceFn(t, "func StartWith(")
-	if !strings.Contains(fn, "now := time.Now()") {
+	if !strings.Contains(fn, "now := wallClock()") {
 		t.Fatal("StartWith must stamp RunTick with wall-clock now, not the ticker channel time")
 	}
 }
@@ -986,7 +986,7 @@ func TestStartWithStopWaits(t *testing.T) {
 }
 
 func TestRunTickComputesIsTradingDayOnce(t *testing.T) {
-	fn := sourceFn(t, "func RunTick(")
+	fn := sourceFn(t, "func RunMarketTick(")
 	if n := strings.Count(fn, "IsTradingDay("); n != 1 {
 		t.Fatalf("RunTick calls IsTradingDay %d times, want 1", n)
 	}
@@ -1135,4 +1135,63 @@ func TestTickActualizeSkipsOverlap(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	t.Fatalf("want skipped in-flight actualize, logs=%+v", logs)
+}
+
+// Зависший опрос трекеров (сеть брокера) за минуту до окна держал весь тик:
+// тикер ронял такты, и решение T-1 не принималось вовсе.
+func TestHungChoresDoNotBlockT1Window(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.9})
+	br := &live.MemoryBroker{}
+	eng := live.New(db, &live.MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	eng.Telegram = &live.MemoryTelegram{}
+	eng.Broker = br
+	eng.ChatID = "c"
+	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
+	eng.PutToken("t", "2027-01-01T00:00:00Z")
+	t1 := time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC)
+	eng.Now = func() time.Time { return t1 }
+
+	// Первый такт — T-2, дальше — T-1.
+	var mu sync.Mutex
+	n := 0
+	wallClock = func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		n++
+		if n == 1 {
+			return t1.Add(-time.Minute)
+		}
+		return t1
+	}
+	tickInterval = 10 * time.Millisecond
+	t.Cleanup(func() { wallClock, tickInterval = time.Now, 20*time.Second })
+
+	release := make(chan struct{})
+	live.PollTrackersHook = func() { <-release }
+	t.Cleanup(func() { live.PollTrackersHook = nil })
+
+	var once sync.Once
+	t1Ran := make(chan struct{})
+	stop := StartWith(db, Deps{Live: eng}, func(j JobLog) {
+		if j.Name == "telegram-aggregation" && !j.Skipped && strings.HasPrefix(j.Detail, "window until=1") {
+			once.Do(func() { close(t1Ran) })
+		}
+	})
+	select {
+	case <-t1Ran:
+	case <-time.After(3 * time.Second):
+		t.Error("T-1 не выполнился, пока опрос трекеров висел")
+	}
+	close(release)
+	stop()
+	if len(br.Orders) != 1 {
+		t.Fatalf("T-1 должен поставить один ордер, orders=%d", len(br.Orders))
+	}
 }

@@ -12,7 +12,7 @@ func TestRunTickDoesNotBlockOnPriceActualization(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := string(raw)
-	start := strings.Index(src, "func RunTick(")
+	start := strings.Index(src, "func RunMarketTick(")
 	if start < 0 {
 		t.Fatal("RunTick not found")
 	}

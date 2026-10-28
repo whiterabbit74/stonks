@@ -148,7 +148,7 @@ func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
 	}
 	deps.Providers.UseWebullToken(db.WebullAccessToken)
 	engine(db, deps).ResumeTrackers()
-	tick := time.NewTicker(20 * time.Second)
+	tick := time.NewTicker(tickInterval)
 	done := make(chan struct{})
 	var tickWG sync.WaitGroup
 	tickWG.Add(1)
@@ -160,7 +160,21 @@ func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
 				tick.Stop()
 				return
 			case <-tick.C:
-				now := time.Now()
+				now := wallClock()
+				// Опрос трекеров, здоровье токенов и продление календаря ходят в
+				// сеть брокеров и провайдеров. Зависший вызов не должен держать
+				// окно T-11/T-1, поэтому они идут отдельной goroutine, а новый
+				// круг пропускается, пока предыдущий не закончился.
+				if choresMu.TryLock() {
+					backgroundWG.Add(1)
+					go func() {
+						defer backgroundWG.Done()
+						defer choresMu.Unlock()
+						RunChores(db, deps, now, onEvent)
+					}()
+				} else {
+					onEvent(JobLog{At: now, Name: "chores", Skipped: true, Detail: "previous-round-running"})
+				}
 				func() {
 					defer func() {
 						if rec := recover(); rec != nil {
@@ -168,7 +182,7 @@ func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
 							onEvent(JobLog{At: now, Name: "tick-panic", Detail: fmt.Sprint(rec)})
 						}
 					}()
-					RunTick(db, deps, now, onEvent)
+					RunMarketTick(db, deps, now, onEvent)
 				}()
 			}
 		}
@@ -183,7 +197,44 @@ func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
 	}
 }
 
+// tickInterval и wallClock — швы для тестов цикла StartWith.
+var (
+	tickInterval = 20 * time.Second
+	wallClock    = time.Now
+	choresMu     sync.Mutex
+)
+
+// RunTick — один полный круг планировщика: окно рынка, затем фоновые задачи.
+// StartWith запускает эти половины раздельно.
 func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
+	RunMarketTick(db, deps, now, onEvent)
+	RunChores(db, deps, now, onEvent)
+}
+
+// RunChores — задачи тика, которые ходят в сеть брокеров и провайдеров и не
+// решают ничего в окне T-11/T-1.
+func RunChores(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
+	if onEvent == nil {
+		onEvent = func(JobLog) {}
+	}
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("scheduler: RunChores panic: %v", rec)
+			onEvent(JobLog{At: now, Name: "chores-panic", Detail: fmt.Sprint(rec)})
+		}
+	}()
+	today := tradingdate.TodayNYSE(now)
+	nTrack := engine(db, deps).PollTrackers()
+	onEvent(JobLog{At: now, Name: "order-trackers", Detail: fmt.Sprintf("pending=%d", nTrack)})
+
+	detail, skipped := RunTokenHealth(db, deps, today, now)
+	onEvent(JobLog{At: now, Name: "broker-token-health", Skipped: skipped, Detail: detail})
+
+	RunCalendarExtend(db, deps, today, now, onEvent)
+}
+
+// RunMarketTick — календарь, окна T-11/T-1 и задачи после закрытия.
+func RunMarketTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 	if onEvent == nil {
 		onEvent = func(JobLog) {}
 	}
@@ -262,19 +313,11 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 		}
 	}
 
-	nTrack := eng.PollTrackers()
-	onEvent(JobLog{At: now, Name: "order-trackers", Detail: fmt.Sprintf("pending=%d", nTrack)})
-
-	detail, skipped := RunTokenHealth(db, deps, today, now)
-	onEvent(JobLog{At: now, Name: "broker-token-health", Skipped: skipped, Detail: detail})
-
 	if !rawTrading {
 		onEvent(JobLog{At: now, Name: "market-jobs", Skipped: true, Detail: "non-trading-day"})
-		RunCalendarExtend(db, deps, today, now, onEvent)
 		return
 	}
 	if !trading {
-		RunCalendarExtend(db, deps, today, now, onEvent)
 		return
 	}
 	nowMin := p.Hour*60 + p.Minute
@@ -292,7 +335,6 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 		}()
 		RunAutotradeLogRotation(db, today, now, onEvent)
 	}
-	RunCalendarExtend(db, deps, today, now, onEvent)
 }
 
 // autotradeLogRetentionDays / autotradeLogMaxRows are the defaults for the
