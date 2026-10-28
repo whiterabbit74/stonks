@@ -57,3 +57,21 @@ func TestLateT1TickStillReadsQuotes(t *testing.T) {
 		t.Fatalf("a late T-1 must still read its quotes, got:\n%s", res.Text)
 	}
 }
+
+// Review of AUD-147: EMA alerts are read after the cycle; a failed read must
+// neither block T-1 nor vanish from the report.
+func TestT1ReportsUnreadableEMAAlerts(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	db, e, _ := testEngine(t, bars)
+	e.Sleep = func(time.Duration) {}
+	if _, err := db.SQL.Exec(`DROP TABLE telegram_ema_alerts`); err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.Aggregate(1, AggregateOpts{ForceSend: true, UpdateState: true, DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Sent || !strings.Contains(res.Text, "EMA-алерты не читаются") {
+		t.Fatalf("sent=%v, report:\n%s", res.Sent, res.Text)
+	}
+}

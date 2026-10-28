@@ -313,26 +313,35 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 	if emaErr != nil {
 		e.logAuto("ema_alerts_unavailable", "", map[string]any{"error": emaErr.Error()})
 	}
-	emaInteg := emaIntegrity(emaAlerts)
 	auto := t1AutoText(cycle, opts.DryRun)
 	var res SimulateResult
 	if early == "" {
-		text := e.buildT1MonitorText(minutesUntilClose, rows, cycle, append(integ, emaInteg...), opts.DryRun)
+		text := e.buildT1MonitorText(minutesUntilClose, rows, cycle, integ, opts.DryRun)
 		if auto != "" {
 			text += "\n\n" + auto
 		}
 		res, err = e.finishSend(&out, text, opts)
 	} else {
-		if block := FormatIntegrityWarningBlock(emaInteg); block != "" {
-			auto = strings.TrimSpace(block + "\n\n" + auto)
-		}
 		res, err = e.finishSend(&out, auto, opts)
 		res.Text = early + "\n\n" + auto
 	}
 	if res.Sent {
-		if ema := buildEmaDecisionMessage(emaAlerts); ema != "" {
-			if e.Send(e.chat(), ema) == nil {
-				res.Text += "\n" + ema
+		// EMA alerts are not the monitoring nor autotrade: their data warnings
+		// and a failed read go with their own message.
+		var ema []string
+		if emaErr != nil {
+			ema = append(ema, "⚠️ EMA-алерты не читаются — проверка пропущена")
+		}
+		if block := FormatIntegrityWarningBlock(emaIntegrity(emaAlerts)); block != "" {
+			ema = append(ema, block)
+		}
+		if msg := buildEmaDecisionMessage(emaAlerts); msg != "" {
+			ema = append(ema, msg)
+		}
+		if len(ema) > 0 {
+			text := strings.Join(ema, "\n\n")
+			if e.Send(e.chat(), text) == nil {
+				res.Text += "\n" + text
 			}
 		}
 		if !opts.DryRun {
