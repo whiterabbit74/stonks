@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -298,14 +299,72 @@ func (d *DB) OpenPositions() ([]Position, error) {
 	return out, rows.Err()
 }
 
-// SavePosition inserts or replaces a position by id.
+// SavePosition inserts or replaces a position by id, as given. It is the
+// seed of tests and of the store's own writes; a row typed by an operator goes
+// through AddPosition or PatchPosition, which keep the journal rules.
 func (d *DB) SavePosition(p Position) error {
 	return savePositionOn(d.SQL, p)
 }
 
-// PatchPosition applies edit to the stored row and writes the result back in
-// one transaction, returning the row as it now stands (nil when there is no
-// such id). An error from edit leaves the row untouched.
+// ValidationError is a hand-written row the journal refuses; the HTTP layer
+// answers it with 400.
+type ValidationError string
+
+func (e ValidationError) Error() string { return string(e) }
+
+// checkManual holds a hand-written row to the journal rules (invariant L).
+func (p *Position) checkManual() error {
+	if SafeTicker(p.Symbol) == "" {
+		return ValidationError("Не указан тикер")
+	}
+	// Zero is not a price: a blank field arriving as 0 was stored instead of
+	// NULL and blocked PnL for good (AUD-129).
+	for _, v := range []*float64{p.EntryPrice, p.ExitPrice} {
+		if v != nil && !(*v > 0) {
+			return ValidationError("Цена должна быть положительной")
+		}
+	}
+	for _, d := range []string{p.EntryDate, p.ExitDate} {
+		if d != "" && !tradingdate.IsValid(d) {
+			return ValidationError("Дата должна быть в формате ГГГГ-ММ-ДД")
+		}
+	}
+	// Any other status word took the row out of every status='open' look-up:
+	// the reconciliation and the binding of later fills (AUD-189).
+	if p.Status != "" && p.Status != "open" && p.Status != "closed" {
+		return ValidationError("Статус позиции — open или closed")
+	}
+	if p.Status == "closed" && p.ExitDate == "" {
+		return ValidationError("У закрытой позиции нужна дата выхода")
+	}
+	if p.EntryDate != "" && p.ExitDate != "" && p.ExitDate < p.EntryDate {
+		return ValidationError("Дата выхода не может быть раньше даты входа")
+	}
+	return nil
+}
+
+// AddPosition records a position typed by an operator. It is always a new
+// row: posting the id of an existing one replaced it whole, past every rule
+// PatchPosition keeps. The legs are what the brokers executed, so they are
+// written by fills, never typed (AUD-189).
+func (d *DB) AddPosition(p Position) error {
+	if !reflect.DeepEqual(p.Webull, BrokerLeg{}) || !reflect.DeepEqual(p.Robinhood, BrokerLeg{}) {
+		return ValidationError("Ноги брокеров записывает только исполнение")
+	}
+	if err := p.checkManual(); err != nil {
+		return err
+	}
+	p.ID = ""
+	return savePositionOn(d.SQL, p)
+}
+
+// PatchPosition applies an operator's edit to the stored row and writes the
+// result back in one transaction, returning the row as it now stands (nil
+// when there is no such id). An error from edit leaves the row untouched.
+//
+// The edit keeps the journal rules (invariant L, AUD-189): the status changes
+// only by closing (ClosePosition, which zeroes a test row's legs and checks
+// the dates), the legs only by fills, and the dates stay in order.
 //
 // Read-modify-write of a position row belongs in a transaction: the brokers
 // keep filling while an operator edits, so an edit built on a copy read a
@@ -324,7 +383,17 @@ func (d *DB) PatchPosition(id string, edit func(*Position) error) (*Position, er
 	if err != nil {
 		return nil, err
 	}
+	before := p
 	if err := edit(&p); err != nil {
+		return nil, err
+	}
+	if p.Status != before.Status {
+		return nil, ValidationError("Статус меняет только закрытие позиции")
+	}
+	if !reflect.DeepEqual(p.Webull, before.Webull) || !reflect.DeepEqual(p.Robinhood, before.Robinhood) {
+		return nil, ValidationError("Ноги брокеров меняет только исполнение")
+	}
+	if err := p.checkManual(); err != nil {
 		return nil, err
 	}
 	p.ID = id

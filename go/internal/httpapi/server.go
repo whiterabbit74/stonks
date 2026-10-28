@@ -1596,12 +1596,8 @@ func (s *Server) handlePostPosition(w http.ResponseWriter, r *http.Request) {
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	if err := checkPositionInput(&body); err != nil {
-		writeJSON(w, 400, map[string]any{"error": err.Error()})
-		return
-	}
-	if err := s.DB.SavePosition(body); err != nil {
-		writeJSON(w, 500, map[string]any{"error": err.Error()})
+	if err := s.DB.AddPosition(body); err != nil {
+		writeJSON(w, positionErrCode(err), map[string]any{"error": err.Error()})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
@@ -1620,20 +1616,15 @@ func (s *Server) handlePatchPosition(w http.ResponseWriter, r *http.Request) {
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	var errInput error
 	updated, err := s.DB.PatchPosition(r.PathValue("id"), func(p *store.Position) error {
 		if json.Unmarshal(body, p) != nil {
-			errInput = errors.New("invalid json")
-		} else {
-			errInput = checkPositionInput(p)
+			return store.ValidationError("invalid json")
 		}
-		return errInput
+		return nil
 	})
 	switch {
-	case errInput != nil:
-		writeJSON(w, 400, map[string]any{"error": errInput.Error()})
 	case err != nil:
-		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		writeJSON(w, positionErrCode(err), map[string]any{"error": err.Error()})
 	case updated == nil:
 		writeJSON(w, 404, map[string]any{"error": "Позиция не найдена"})
 	default:
@@ -1641,23 +1632,13 @@ func (s *Server) handlePatchPosition(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// checkPositionInput guards the hand-edit paths. Zero is not a price: a blank
-// field arriving as 0 was stored instead of NULL and blocked PnL for good.
-func checkPositionInput(p *store.Position) error {
-	if store.SafeTicker(p.Symbol) == "" {
-		return errors.New("Не указан тикер")
+// positionErrCode is 400 for a row the journal rules refuse, 500 otherwise.
+func positionErrCode(err error) int {
+	var invalid store.ValidationError
+	if errors.As(err, &invalid) {
+		return 400
 	}
-	for _, v := range []*float64{p.EntryPrice, p.ExitPrice} {
-		if v != nil && !(*v > 0) {
-			return errors.New("Цена должна быть положительной")
-		}
-	}
-	for _, d := range []string{p.EntryDate, p.ExitDate} {
-		if d != "" && !tradingdate.IsValid(d) {
-			return errors.New("Дата должна быть в формате ГГГГ-ММ-ДД")
-		}
-	}
-	return nil
+	return 500
 }
 
 // handleClosePosition closes a position by hand. There is no linked-row check
