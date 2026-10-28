@@ -138,10 +138,38 @@ func (s *Server) handlePutDataset(w http.ResponseWriter, r *http.Request) {
 	// on a PATCH of one tag (AUD-140).
 	stated, _ := payload["adjustedForSplits"].(bool)
 	if existing != nil {
+		if _, ok := payload["data"]; !ok {
+			// Without prices this is a metadata edit. Saving the bars read above
+			// back would delete a refresh that landed in between (AUD-184).
+			s.putDatasetMetadata(w, store.SafeTicker(id), payload)
+			return
+		}
 		payload = mergeDatasetPayload(existing, payload)
 	}
 	payload["ticker"] = id
 	s.savePayload(w, payload, stated)
+}
+
+func (s *Server) putDatasetMetadata(w http.ResponseWriter, id string, payload map[string]any) {
+	var tag, company *string
+	for k, v := range payload {
+		val := fmtString(v)
+		switch k {
+		case "tag":
+			tag = &val
+		case "companyName":
+			company = &val
+		case "ticker", "id":
+		default:
+			writeJSON(w, 400, map[string]any{"error": "без data меняются только tag и companyName: " + k})
+			return
+		}
+	}
+	if err := s.DB.UpdateDatasetMetadata(id, tag, company); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"success": true, "id": id, "ticker": id})
 }
 
 func mergeDatasetPayload(existing, payload map[string]any) map[string]any {
